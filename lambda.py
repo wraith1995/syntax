@@ -15,6 +15,12 @@ expr = App (expr lhs, expr rhs)
 """, ext_checks={"name" : is_valid_name}, types={'name' : str})
 
 
+a = L.Var("a")
+App = L.App(a, a)
+print(App)
+
+
+
 def evp(a : L.expr, env : dict[str, L.expr]) -> L.expr:
     match a:
         case L.Var(name):
@@ -36,5 +42,8 @@ def evp(a : L.expr, env : dict[str, L.expr]) -> L.expr:
                 case _:
                     return L.App(fp, x)
 
-b = evp(L.App(L.Lam("a", L.Var("a")), L.Var("b")), {})
+q1 = L.App(L.Lam("a", L.Var("a")), L.Var("b"))
+q2 = L.App(L.Lam("a", L.Var("a")), L.Var("b"))
+print(q1 is q2)
+b = evp(q1, {})
 print(b)
