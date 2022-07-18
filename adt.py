@@ -97,6 +97,17 @@ def build_dc(cname, field_spec, CHK, TYS, parent=None, memoize=False):
         #make the type with default
         #(name, , DEFAULT)
         #define post_init
+    classdict = WeakValueDictionary({})
+    def __new__(cls, *args, **kwargs):
+        #build the dataclass just to hash?
+        obj = object.__new__(cls)
+        cls.__init__(obj, *args, **kwargs)
+        if (obj) in classdict:
+            return classdict[(obj)]
+        else:
+            classdict[(obj)] = obj
+            return obj
+        
     def __post_init__(self):
         for (fd, fds) in zip(fields, field_data):
             (seq, opt) = fds
@@ -129,11 +140,12 @@ def build_dc(cname, field_spec, CHK, TYS, parent=None, memoize=False):
                 else:
                     xt = type(val)
                     raise Exception("{0}.{1} has type {2}, but should have type".format(cname, fd[0], xt, fd[1]))
+        #classdict[hash(self)] = self
             #memoization?
     # def newish(cls, *args, **kwargs):
         
-    namespace = {"__post_init__" : __post_init__}
-    return make_dataclass(cname, fields, bases=bases, unsafe_hash=True, frozen=True, slots=True, namespace=namespace)
+    namespace = {"__post_init__" : __post_init__, "__new__" : __new__}
+    return make_dataclass(cname, fields, bases=bases, frozen=True, slots=True, namespace=namespace)
 
 def _build_classes(asdl_mod, ext_checks={},
                    ext_types={}):
