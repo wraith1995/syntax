@@ -12,7 +12,7 @@ expr = App (expr lhs, expr rhs)
      | Var (name vname)
      | Lam (name arg, expr body)
 }
-""", ext_checks={"name" : is_valid_name}, types={'name' : str})
+""", ext_checks={"name" : is_valid_name}, ext_types={'name' : str})
 
 
 a = L.Var("a")

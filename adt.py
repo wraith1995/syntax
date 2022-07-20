@@ -68,7 +68,7 @@ def _build_types(SC, ext_types):
     return tys
         
 
-def build_dc(cname, field_spec, CHK, TYS, parent=None, memoize=False):
+def build_dc(cname, field_spec, CHK, TYS, parent=None, memoize=True):
     if parent is not None:
         bases = (parent,)
     else:
@@ -143,12 +143,14 @@ def build_dc(cname, field_spec, CHK, TYS, parent=None, memoize=False):
         #classdict[hash(self)] = self
             #memoization?
     # def newish(cls, *args, **kwargs):
-        
-    namespace = {"__post_init__" : __post_init__, "__new__" : __new__}
+    if memoize:
+        namespace = {"__post_init__" : __post_init__, "__new__" : __new__}
+    else:
+        namespace = {"__post_init__" : __post_init__}
     return make_dataclass(cname, fields, bases=bases, frozen=True, slots=True, namespace=namespace)
 
 def _build_classes(asdl_mod, ext_checks={},
-                   ext_types={}):
+                   ext_types={}, memoize=True):
     SC   = _build_superclasses(asdl_mod)
     CHK  = _build_checks(asdl_mod, SC, ext_checks)
     TYS = _build_types(SC, ext_types)
@@ -157,7 +159,7 @@ def _build_classes(asdl_mod, ext_checks={},
     
     Err  = type(asdl_mod.name + "Err", (Exception,), {})
     def create_prod(nm,t):
-        C = build_dc(nm, t.fields, CHK, TYS)
+        C = build_dc(nm, t.fields, CHK, TYS, memoize=memoize)
         #C          = SC[nm]
         #fields     = t.fields
         #C.__init__ = create_initfn(nm,fields)
@@ -169,7 +171,7 @@ def _build_classes(asdl_mod, ext_checks={},
         #     '__init__' : create_initfn(cname,fields),
         #     '__repr__' : create_reprfn(cname,fields),
         # })
-        C = build_dc(cname, fields, CHK, TYS, parent=T)
+        C = build_dc(cname, fields, CHK, TYS, parent=T, memoize=memoize)
         return C
     #Just use dataclasses + subclassing - check if dataclass can inheret from an object
     def create_sum(typ_name,t):
@@ -194,7 +196,7 @@ def _build_classes(asdl_mod, ext_checks={},
             
     return mod
 
-def ADT(asdl_str, types={}, ext_checks={}, memoize=False):
+def ADT(asdl_str, ext_types={}, ext_checks={}, memoize=True):
     """ Function that converts an ASDL grammar into a Python Module.
 
     The returned module will contain one class for every ASDL type
@@ -250,7 +252,7 @@ def ADT(asdl_str, types={}, ext_checks={}, memoize=False):
         })
     """
     asdl_ast = _asdl_parse(asdl_str)
-    mod      = _build_classes(asdl_ast, ext_checks=ext_checks, ext_types=types)
+    mod      = _build_classes(asdl_ast, ext_checks=ext_checks, ext_types=ext_types, memoize=memoize)
     # cache values in case we might want them
     mod._ext_checks = ext_checks
     mod._ext_types = types
