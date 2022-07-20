@@ -255,7 +255,7 @@ def ADT(asdl_str, ext_types={}, ext_checks={}, memoize=True):
     mod      = _build_classes(asdl_ast, ext_checks=ext_checks, ext_types=ext_types, memoize=memoize)
     # cache values in case we might want them
     mod._ext_checks = ext_checks
-    mod._ext_types = types
+    mod._ext_types = ext_types
     mod._ast        = asdl_ast
     mod._defstr     = asdl_str
 
