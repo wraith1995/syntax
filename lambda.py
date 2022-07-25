@@ -1,5 +1,5 @@
 from adt import ADT
-
+from auxtypes import stamp
 def is_valid_name(x):
     return type(x) is str
 
@@ -8,14 +8,17 @@ def is_valid_name(x):
 L = ADT("""
 module LAM {
 
+var = (name vname, stamp* id)
+
 expr = App (expr lhs, expr rhs)
-     | Var (name vname)
-     | Lam (name arg, expr body)
+     | Var (var arg)
+     | Lam (var arg, expr body)
 }
-""", ext_checks={"name" : is_valid_name}, ext_types={'name' : str})
+""", ext_checks={"name" : is_valid_name}, ext_types={'name' : str,
+                                                     'stamp' : stamp}, defaults = {'stamp' : stamp()})
 
 
-a = L.Var("a")
+a = L.var("a")
 App = L.App(a, a)
 print(App)
 
@@ -31,7 +34,8 @@ def evp(a : L.expr, env : dict[str, L.expr]) -> L.expr:
         case L.Lam(a, b):
             return L.Lam(a, b)
         case L.App(L.Lam(name, body), arg):
-            envp = env.copy()
+            envp = env.copy() #Use immutable dictionaries, frozendict to avoid this -> make an immutable dict with sharing.
+
             envp[name] = arg
             return evp(body, envp)
         case L.App(f, x):

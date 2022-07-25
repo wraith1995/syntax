@@ -1,10 +1,11 @@
 """ A module for parsing ASDL grammars into Python Class hierarchies
-    Stolen from https://raw.githubusercontent.com/gilbo/atl/master/ATL/adt.py
+    Adopted from from https://raw.githubusercontent.com/gilbo/atl/master/ATL/adt.py
 
 """
 
 import asdl
 from types import ModuleType
+from typing import Callable
 from weakref import WeakValueDictionary
 from dataclasses import make_dataclass, field
 from ilist import ilist
@@ -64,7 +65,7 @@ def _build_types(SC, ext_types):
     return tys
         
 
-def build_dc(cname, field_spec, CHK, TYS, parent=None, memoize=True, namespace_injector=None):
+def build_dc(cname, field_spec, CHK, TYS, parent=None, memoize=True, namespace_injector=None, defaults={}):
     if parent is not None:
         bases = (parent,)
     else:
@@ -74,14 +75,25 @@ def build_dc(cname, field_spec, CHK, TYS, parent=None, memoize=True, namespace_i
     for f in field_spec:
         chk = lambda x: True
         name  = f.name
+        if name is None:
+            name = str(f.type)
         seq = f.seq
         opt = f.opt
         tys = TYS[str(f.type)]
         if str(tys) in CHK:
             chk = CHK[str(tys)]
         field_data.append([seq, opt])
-        if opt and not seq: 
-            fd = (name, ty.Optional[f.ty], None)
+        if opt and not seq:
+            if str(tys) in defaults:
+                default = defaults[str(tys)]
+                if isinstance(default, tys):
+                    fd = (name, f.ty, field(default=default))
+                elif isinstance(default, Callable):
+                    fd = (name, f.ty, field(default_factory=default))
+                else:
+                    raise Exception("Default is a bad type.")
+            else:
+                fd = (name, ty.Optional[f.ty], None)
         elif not opt and seq: # should this be non-empty list or no default list
             fd = (name, ilist[tys])
         elif opt and seq:
@@ -144,10 +156,11 @@ def build_dc(cname, field_spec, CHK, TYS, parent=None, memoize=True, namespace_i
         namespace["__new__"] = __new__
     else:
         namespace["__post_init__"] = __post_init__
+    print(fields)
     return make_dataclass(cname, fields, bases=bases, frozen=True, slots=True, namespace=namespace)
 
 def _build_classes(asdl_mod, ext_checks={},
-                   ext_types={}, memoize=True, namespace_injector=None):
+                   ext_types={}, memoize=True, namespace_injector=None, defaults={}):
     SC   = _build_superclasses(asdl_mod)
     CHK  = _build_checks(asdl_mod, SC, ext_checks)
     TYS = _build_types(SC, ext_types)
@@ -156,11 +169,11 @@ def _build_classes(asdl_mod, ext_checks={},
     
     Err  = type(asdl_mod.name + "Err", (Exception,), {})
     def create_prod(nm,t):
-        C = build_dc(nm, t.fields, CHK, TYS, memoize=memoize, namespace_injector=namespace_injector)
+        C = build_dc(nm, t.fields, CHK, TYS, memoize=memoize, namespace_injector=namespace_injector, defaults=defaults)
         return C
     
     def create_sum_constructor(tname,cname,T,fields):
-        C = build_dc(cname, fields, CHK, TYS, parent=T, memoize=memoize, namespace_injector)
+        C = build_dc(cname, fields, CHK, TYS, parent=T, memoize=memoize, namespace_injector=namespace_injector, defaults=defaults)
         return C
 
     def create_sum(typ_name,t):
@@ -185,7 +198,7 @@ def _build_classes(asdl_mod, ext_checks={},
 
     return mod
 
-def ADT(asdl_str, ext_types={}, ext_checks={}, memoize=True):
+def ADT(asdl_str, ext_types={}, ext_checks={}, defaults={}, memoize=True):
     """ Function that converts an ASDL grammar into a Python Module.
 
     The returned module will contain one class for every ASDL type
@@ -241,7 +254,7 @@ def ADT(asdl_str, ext_types={}, ext_checks={}, memoize=True):
         })
     """
     asdl_ast = _asdl_parse(asdl_str)
-    mod      = _build_classes(asdl_ast, ext_checks=ext_checks, ext_types=ext_types, memoize=memoize)
+    mod      = _build_classes(asdl_ast, ext_checks=ext_checks, ext_types=ext_types, memoize=memoize, defaults=defaults)
     # cache values in case we might want them
     mod._ext_checks = ext_checks
     mod._ext_types = ext_types
