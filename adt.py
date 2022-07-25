@@ -26,7 +26,7 @@ def _build_superclasses(asdl_mod):
         if isinstance(v, asdl.Sum):
             scs[nm] = type(nm, (), {"__init__" : create_invalid_init(nm)})
         elif isinstance(v, asdl.Product):
-            scs[nm] = ztype(nm, (), {})
+            scs[nm] = type(nm, (), {})
     return scs
 
 _builtin_checks = {
