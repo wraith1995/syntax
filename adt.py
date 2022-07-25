@@ -30,11 +30,7 @@ def _build_superclasses(asdl_mod):
     return scs
 
 _builtin_checks = {
-    'string'  : lambda x: type(x) is str,
-    'int'     : lambda x: type(x) is int,
-    'object'  : lambda x: x is not None,
-    'float'   : lambda x: type(x) is float,
-    'bool'    : lambda x: type(x) is bool,
+    'object'  : lambda x: x is not None
 }
 
 _builtin_types = {
