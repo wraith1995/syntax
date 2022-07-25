@@ -122,15 +122,15 @@ def build_dc(cname, field_spec, CHK, TYS, parent=None, memoize=True, namespace_i
                 for x in val:
                     if not isinstance(x, etype):
                         xt = type(x)
-                        raise Exception("{0}.{1} does not have type {2} because a value has type {3}".foramt(cname, fd[0], fd[1], xt))
+                        raise Exception("{0}.{1} does not have type {2} because a value has type {3}".format(cname, fd[0], fd[1], xt))
                     elif not chk(val):
-                        raise Exception("{0}.{1} is not valid because {2} failed the check for type {3}".fforamt(cname, fd[0], x, etype))
+                        raise Exception("{0}.{1} is not valid because {2} failed the check for type {3}".format(cname, fd[0], x, etype))
                     else:
                         pass
             else:
                 if isinstance(val, fd[1]):
                     if not chk(val) and not (val is None and opt):
-                        raise Exception("{0}.{1} is not valid because {2} failed the check for type {3}".fforamt(cname, fd[0], val, fd[1]))
+                        raise Exception("{0}.{1} is not valid because {2} failed the check for type {3}".format(cname, fd[0], val, fd[1]))
                     else:
                         pass
                 else:
