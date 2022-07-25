@@ -68,7 +68,7 @@ def _build_types(SC, ext_types):
     return tys
         
 
-def build_dc(cname, field_spec, CHK, TYS, parent=None, memoize=True):
+def build_dc(cname, field_spec, CHK, TYS, parent=None, memoize=True, namespace_injector=None):
     if parent is not None:
         bases = (parent,)
     else:
@@ -143,14 +143,18 @@ def build_dc(cname, field_spec, CHK, TYS, parent=None, memoize=True):
         #classdict[hash(self)] = self
             #memoization?
     # def newish(cls, *args, **kwargs):
+    namespace = {}
+    if namespace_injector is not None:
+        namespace = namespace_injector(fields field_data, parent)
     if memoize:
-        namespace = {"__post_init__" : __post_init__, "__new__" : __new__}
+        namespace["__post_init__"] = __post_init__
+        namespace["__new__"] = __new__
     else:
-        namespace = {"__post_init__" : __post_init__}
+        namespace["__post_init__"] = __post_init__
     return make_dataclass(cname, fields, bases=bases, frozen=True, slots=True, namespace=namespace)
 
 def _build_classes(asdl_mod, ext_checks={},
-                   ext_types={}, memoize=True):
+                   ext_types={}, memoize=True, namespace_injector=None):
     SC   = _build_superclasses(asdl_mod)
     CHK  = _build_checks(asdl_mod, SC, ext_checks)
     TYS = _build_types(SC, ext_types)
@@ -159,21 +163,13 @@ def _build_classes(asdl_mod, ext_checks={},
     
     Err  = type(asdl_mod.name + "Err", (Exception,), {})
     def create_prod(nm,t):
-        C = build_dc(nm, t.fields, CHK, TYS, memoize=memoize)
-        #C          = SC[nm]
-        #fields     = t.fields
-        #C.__init__ = create_initfn(nm,fields)
-        #C.__repr__ = create_reprfn(nm,fields)
+        C = build_dc(nm, t.fields, CHK, TYS, memoize=memoize, namespace_injector=namespace_injector)
         return C
     
     def create_sum_constructor(tname,cname,T,fields):
-        # C          = type(cname,(T,),{
-        #     '__init__' : create_initfn(cname,fields),
-        #     '__repr__' : create_reprfn(cname,fields),
-        # })
-        C = build_dc(cname, fields, CHK, TYS, parent=T, memoize=memoize)
+        C = build_dc(cname, fields, CHK, TYS, parent=T, memoize=memoize, namespace_injector)
         return C
-    #Just use dataclasses + subclassing - check if dataclass can inheret from an object
+
     def create_sum(typ_name,t):
         T          = SC[typ_name]
         afields    = t.attributes
@@ -183,17 +179,17 @@ def _build_classes(asdl_mod, ext_checks={},
                         c.fields + afields )
             assert (not hasattr(mod,c.name)), (
                 f"name '{c.name}' conflict in module '{mod}'")
-            setattr(T,c.name,C)
-            setattr(mod,c.name,C)
+            setattr(T, c.name, C)
+            setattr(mod, c.name, C)
         return T
     
     for nm,t in asdl_mod.types.items():
-        if isinstance(t,asdl.Product):
-            setattr(mod,nm,create_prod(nm,t))
-        elif isinstance(t,asdl.Sum):
-            setattr(mod,nm,create_sum(nm,t))
+        if isinstance(t, asdl.Product):
+            setattr(mod, nm, create_prod(nm,t))
+        elif isinstance(t, asdl.Sum):
+            setattr(mod, nm, create_sum(nm, t))
         else: assert false, "unexpected kind of asdl type"
-            
+
     return mod
 
 def ADT(asdl_str, ext_types={}, ext_checks={}, memoize=True):
