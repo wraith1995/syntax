@@ -136,12 +136,9 @@ def build_dc(cname, field_spec, CHK, TYS, parent=None, memoize=True, namespace_i
                 else:
                     xt = type(val)
                     raise Exception("{0}.{1} has type {2}, but should have type".format(cname, fd[0], xt, fd[1]))
-        #classdict[hash(self)] = self
-            #memoization?
-    # def newish(cls, *args, **kwargs):
     namespace = {}
     if namespace_injector is not None:
-        namespace = namespace_injector(fields field_data, parent)
+        namespace = namespace_injector(cname, fields, field_data, parent)
     if memoize:
         namespace["__post_init__"] = __post_init__
         namespace["__new__"] = __new__
