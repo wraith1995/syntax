@@ -25,6 +25,7 @@ print(q)
 a = L.var("a")
 b = L.var("a")
 print(a,b)
+
 App = L.Lam(a, L.Var(a))
 Appp = L.Lam(a, L.Var(a))
 print(App)
