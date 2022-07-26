@@ -77,6 +77,7 @@ def build_dc(cname, field_spec, CHK, TYS, Err, parent=None, memoize=True, namesp
         bases = (parent,)
     else:
         bases = tuple()
+        raise ADTCreationError("Creating a dataclass that supports weakrefs requires either slots=False or a parent class that supports weakref; we only support the latter.")
     fields = []
     field_data = []
     for f in field_spec:
@@ -119,6 +120,9 @@ def build_dc(cname, field_spec, CHK, TYS, Err, parent=None, memoize=True, namesp
         else:
             classdict[(obj)] = obj
             return obj
+    def etype_checker(self, cname, field, targetType, x):
+        pass
+        
 
     def __post_init__(self):
         for (fd, fds) in zip(fields, field_data):
