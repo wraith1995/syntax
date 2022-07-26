@@ -8,7 +8,8 @@ from types import ModuleType
 from typing import Callable, Optional
 from collections.abc import Sequence, Mapping
 from weakref import WeakValueDictionary
-from dataclasses import make_dataclass, field
+from dataclasses import make_dataclass, field, is_dataclass, replace
+from copy import copy, deepcopy
 from ilist import ilist
 import abc
 
@@ -177,7 +178,6 @@ def build_dc(cname, field_info, fieldData, ISPROD, constructorDict,  Err,
                     if minArgs <= len(x) <= maxArgs:
                         try:
                             x = constructorDict[tyname](**x)
-                            
                             convert = True
                         except:
                             raise badSeq
@@ -221,26 +221,29 @@ def build_dc(cname, field_info, fieldData, ISPROD, constructorDict,  Err,
                     (_, xp) = element_checker(cname, fieldName, etype, typeName, chk, opt, x)
                     vals.append(xp)
                 valsp = ilist(vals)
-                setattr(self, fieldName, valsp)
-                    # if not isinstance(x, etype):
-                    #     xt = type(x)
-                    #     raise Err("{0}.{1} does not have type {2} because a value has type {3}".format(cname, fd[0], fd[1], xt))
-                    # elif not chk(val):
-                    #     raise Err("{0}.{1} is not valid because {2} failed the check for type {3}".format(cname, fd[0], x, etype))
-                    # else:
-                    #     pass
+                object.__setattr__(self, fieldName, valsp)
             else:
                 (convert, xp) = element_checker(cname, fieldName, fd[1], typeName, chk, opt, val)
                 if convert:
                     object.__setattr__(self, fieldName, xp)  #OH GOD I AM SORRY.
-                # if isinstance(val, fd[1]):
-                #     if not chk(val) and not (val is None and opt):
-                #         raise Err("{0}.{1} is not valid because {2} failed the check for type {3}".format(cname, fd[0], val, fd[1]))
-                #     else:
-                #         pass
-                # else:
-                #     xt = type(val)
-                #     raise Err("{0}.{1} has type {2}, but should have type {3}".format(cname, fd[0], xt, fd[1]))
+    def mcopy(self, deep=False):
+        d = {}
+        for fd in fields:
+            temp = getattr(self, fd[0])
+            if is_dataclass(temp):
+                op = getattr(temp, "__copy__", None)
+                if isinstance(op, Callable):
+                    d[fd[0]] = temp.__copy__(deep=deep)
+                else:
+                    d[fd[0]] = deepcopy(temp) if deep else copy(temp)
+            else:
+                d[fd[0]] = deepcopy(temp) if deep else copy(temp)
+        return replace(self, **d)
+    def dcopy(self):
+        return mcopy(self, deep=True)
+
+        
+                    
     namespace = {}
     if namespace_injector is not None:
         namespace = namespace_injector(cname, fields, field_data, parent)
@@ -249,6 +252,9 @@ def build_dc(cname, field_info, fieldData, ISPROD, constructorDict,  Err,
         namespace["__new__"] = __new__
     else:
         namespace["__post_init__"] = __post_init__
+    namespace["__copy__"] = mcopy
+    namespace["copy"] = mcopy
+    namespace["deepcopy"] = dcopy
 
     return make_dataclass(cname, fields, bases=bases, frozen=True, slots=True, namespace=namespace)
 

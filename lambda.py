@@ -30,6 +30,7 @@ Appp = L.Lam(a, L.Var(a))
 print(App)
 print(Appp)
 print(App is Appp)
+print(App.__copy__())
 
 
 
