@@ -1,9 +1,7 @@
 # TODO
 
--3. setup.py
--2. Variations on the lambda calc implementation for examples - copy
--1. Computeable defaults or better ways of setting defaults - for the optionals, I should be able to compute. But where? New risks hitting bad defaults. 
-0. Make this into a python module
+
+1. Computeable defaults or better ways of setting defaults - for the optionals, I should be able to compute. But where? New risks hitting bad defaults. 
 2. Binders
 3. Extension of existing ADTs
 1. Iteration over ADTs?
@@ -18,5 +16,6 @@
 12. Logging intergration
 13. Tests
 14. More flexible copy notions?
-
+15. setup.py
+16.  Variations on the lambda calc implementation for examples - copy
 
