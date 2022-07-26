@@ -61,7 +61,7 @@ def _build_checks(asdl_mod, scs, ext_checks):
     for nm in ext_checks:
         checks[nm] = ext_checks[nm]
     for nm in scs: # I think this is unneeded.
-        if nm not in checks:
+        if nm in checks:
             raise ADTCreationError(f"Name conflict for type '{nm}'")
         sc = scs[nm]
         checks[nm] = make_check(sc)
@@ -79,7 +79,7 @@ def _build_types(SC, ext_types):
 #Factorize: Get mod to call
 #Factorize: element type maker - first just try - then if it is not iterable
 
-def build_field_data(cname, field_spec, CHK, TYS):
+def build_field_data(cname, field_spec, CHK, TYS, defaults):
     fields = [] #FIXME: These should all be nametuple for readability.
     field_data = []
     chks = []
@@ -137,11 +137,11 @@ def build_dc(cname, field_info, fieldData, ISPROD, constructorDict,  Err,
     def element_checker(cname, fieldName, targetType, tyname, chk, opt, x):
         xt = type(x)
         badType = Err("{0}.{1} does not have type {2} because a value has type {3}".format(cname, fieldName, targetType, xt))
-        badCheck = Err("{0}.{1} is not valid because {2} failed the check for type {3}".format(cname, fieldName, x, etype))
-        badSeq = Err("{0}.{1} does not have type {2}, and instead has type {3};
-                       we tried to convert the value, {4}, because it was a sequence or mapping, but this failed.".format(cname, fieldName, targetType, xt, x))
-        badElem = Err("{0}.{1} does not have type {2}, and instead has type {3};
-                       we tried to convert the value, {4}, because it was the single correct type, but this failed.".format(cname, fieldName, targetType, xt, x))
+        badCheck = Err("{0}.{1} is not valid because {2} failed the check for type {3}".format(cname, fieldName, x, targetType))
+        badSeq = Err("""{0}.{1} does not have type {2}, and instead has type {3};
+                        we tried to convert the value, {4}, because it was a sequence or mapping, but this failed.""".format(cname, fieldName, targetType, xt, x))
+        badElem = Err("""{0}.{1} does not have type {2}, and instead has type {3};
+                          we tried to convert the value, {4}, because it was the single correct type, but this failed.""".format(cname, fieldName, targetType, xt, x))
 
         #badTypeConstruction = None #three cases: it is map - it is a sequence - with the right number of required args.
 
@@ -152,11 +152,11 @@ def build_dc(cname, field_info, fieldData, ISPROD, constructorDict,  Err,
         if earlyAble:
             (ofields, ofield_data, _) = fieldData[tyname]
             maxArgs = len(ofield_data)
-            minArgs = len(filter(lambda x: not x[1], ofield_data)) #not optional fields
+            minArgs = len(list(filter(lambda x: not x[1], ofield_data))) #not optional fields
             if minArgs == 1:
                 loc = -1
-                for (idx, x) in enumerate(ofield_data):
-                    if not x[1]:
+                for (idx, y) in enumerate(ofield_data):
+                    if not y[1]:
                         loc = idx
                         break
                 singleType = ofields[loc][1]
@@ -173,10 +173,11 @@ def build_dc(cname, field_info, fieldData, ISPROD, constructorDict,  Err,
                             convert = True
                         except:
                             raise badSeq
-                elif isinstance(x, mapping):
+                elif isinstance(x, Mapping):
                     if minArgs <= len(x) <= maxArgs:
                         try:
                             x = constructorDict[tyname](**x)
+                            
                             convert = True
                         except:
                             raise badSeq
@@ -229,9 +230,9 @@ def build_dc(cname, field_info, fieldData, ISPROD, constructorDict,  Err,
                     # else:
                     #     pass
             else:
-                (convert, xp) = element_checker(cname, fieldName, etype, typeName, chk, opt, x)
+                (convert, xp) = element_checker(cname, fieldName, fd[1], typeName, chk, opt, val)
                 if convert:
-                    setattr(self, fieldName, xp)
+                    object.__setattr__(self, fieldName, xp)  #OH GOD I AM SORRY.
                 # if isinstance(val, fd[1]):
                 #     if not chk(val) and not (val is None and opt):
                 #         raise Err("{0}.{1} is not valid because {2} failed the check for type {3}".format(cname, fd[0], val, fd[1]))
@@ -261,16 +262,16 @@ def _build_classes(asdl_mod, ext_checks={},
     constructorDict = {}
     fieldData = {}
     for nm, t in asdl_mod.types.items():
-        match t:
-            case asdl.Product:
-                fds = build_field_data(nm, t.fields, CHK, TYS)
-                fieldData[nm] = fds
-            case asdl.Sum:
-                for c in t.types:
-                    fds = build_field_data(c.name, c.fields + t.attributes, CHK, TYS)
-                    fieldData[(nm, c.name)] = fds
-            case _:
-                raise ADTCreationError("Unexpected kind of asdl type: neither Sum nor Product.")
+        if isinstance(t, asdl.Product):
+            fds = build_field_data(nm, t.fields, CHK, TYS, defaults)
+            fieldData[nm] = fds
+        elif isinstance(t, asdl.Sum):
+            for c in t.types:
+                fds = build_field_data(c.name, c.fields + t.attributes, CHK, TYS, defaults)
+                fieldData[(nm, c.name)] = fds
+        else:
+            print(isinstance(t, asdl.Product))
+            raise ADTCreationError("Unexpected kind of asdl type: neither Sum nor Product.")
                     
     
     def create_prod(nm, t, T):
@@ -292,7 +293,7 @@ def _build_classes(asdl_mod, ext_checks={},
         afields    = t.attributes
         for c in t.types:
             C      = create_sum_constructor(typ_name, c.name, T)
-            if not hasattr(mod, c.name):
+            if hasattr(mod, c.name):
                 raise ADTCreationError(f"name '{c.name}' conflict in module '{mod}'")
             setattr(T, c.name, C)
             setattr(mod, c.name, C)

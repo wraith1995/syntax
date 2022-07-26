@@ -20,12 +20,16 @@ expr = App (expr lhs, expr rhs)
 
 
 
-
+q = L.Var("a")
+print(q)
 a = L.var("a")
 b = L.var("a")
 print(a,b)
-App = L.App(L.Var(a), L.Var(a))
+App = L.Lam(a, L.Var(a))
+Appp = L.Lam(a, L.Var(a))
 print(App)
+print(Appp)
+print(App is Appp)
 
 
 
@@ -51,8 +55,8 @@ def evp(a : L.expr, env : dict[str, L.expr]) -> L.expr:
                 case _:
                     return L.App(fp, x)
 
-q1 = L.App(L.Lam("a", L.Var("a")), L.Var("b"))
-q2 = L.App(L.Lam("a", L.Var("a")), L.Var("b"))
-print(q1 is q2)
-b = evp(q1, {})
-print(b)
+#q1 = L.App(L.Lam("a", L.Var("a")), L.Var("b"))
+#q2 = L.App(L.Lam("a", L.Var("a")), L.Var("b"))
+#print(q1 is q2)
+#b = evp(q1, {})
+#print(b)
