@@ -6,6 +6,7 @@
 import asdl
 from types import ModuleType
 from typing import Callable, Optional
+from collections.abc import Sequence, Mapping
 from weakref import WeakValueDictionary
 from dataclasses import make_dataclass, field
 from ilist import ilist
@@ -79,7 +80,7 @@ def _build_types(SC, ext_types):
 #Factorize: element type maker - first just try - then if it is not iterable
 
 def build_field_data(cname, field_spec, CHK, TYS):
-    fields = []
+    fields = [] #FIXME: These should all be nametuple for readability.
     field_data = []
     chks = []
     for f in field_spec:
@@ -92,7 +93,7 @@ def build_field_data(cname, field_spec, CHK, TYS):
         tys = TYS[str(f.type)]
         if str(tys) in CHK:
             chk = CHK[str(tys)]
-        field_data.append([seq, opt])
+        field_data.append([seq, opt, f.type])
         chks.append(chk)
         # Exact resolution of these options is unclear to me.
         if opt and not seq: 
@@ -116,7 +117,8 @@ def build_field_data(cname, field_spec, CHK, TYS):
     return (fields, field_data, chks)
     
 
-def build_dc(cname, field_info, ISPROD, Err, parent=None, memoize=True, namespace_injector=None, defaults={}):
+def build_dc(cname, field_info, fieldData, ISPROD, constructorDict,  Err,
+             parent=None, memoize=True, namespace_injector=None, defaults={}):
     if parent is not None:
         bases = (parent,)
     else:
@@ -132,13 +134,75 @@ def build_dc(cname, field_info, ISPROD, Err, parent=None, memoize=True, namespac
         else:
             classdict[(obj)] = obj
             return obj
-    def etype_checker(cname, field, targetType, x):
-        pass
-        
+    def element_checker(cname, fieldName, targetType, tyname, chk, opt, x):
+        xt = type(x)
+        badType = Err("{0}.{1} does not have type {2} because a value has type {3}".format(cname, fieldName, targetType, xt))
+        badCheck = Err("{0}.{1} is not valid because {2} failed the check for type {3}".format(cname, fieldName, x, etype))
+        badSeq = Err("{0}.{1} does not have type {2}, and instead has type {3};
+                       we tried to convert the value, {4}, because it was a sequence or mapping, but this failed.".format(cname, fieldName, targetType, xt, x))
+        badElem = Err("{0}.{1} does not have type {2}, and instead has type {3};
+                       we tried to convert the value, {4}, because it was the single correct type, but this failed.".format(cname, fieldName, targetType, xt, x))
+
+        #badTypeConstruction = None #three cases: it is map - it is a sequence - with the right number of required args.
+
+        earlyAble = tyname in ISPROD and ISPROD[tyname]
+        minArgs = 0
+        maxArgs = 0
+        singleType = None
+        if earlyAble:
+            (ofields, ofield_data, _) = fieldData[tyname]
+            maxArgs = len(ofield_data)
+            minArgs = len(filter(lambda x: not x[1], ofield_data)) #not optional fields
+            if minArgs == 1:
+                loc = -1
+                for (idx, x) in enumerate(ofield_data):
+                    if not x[1]:
+                        loc = idx
+                        break
+                singleType = ofields[loc][1]
+                        
+        convert = False
+        if not isinstance(x, targetType):
+            if not earlyAble:
+                raise badType
+            else:
+                if isinstance(x, Sequence):
+                    if minArgs <= len(x) <= maxArgs:
+                        try:
+                            x = constructorDict[tyname](*x)
+                            convert = True
+                        except:
+                            raise badSeq
+                elif isinstance(x, mapping):
+                    if minArgs <= len(x) <= maxArgs:
+                        try:
+                            x = constructorDict[tyname](**x)
+                            convert = True
+                        except:
+                            raise badSeq
+                elif singleType is not None and isinstance(x, singleType): #How does opt interact with this case?
+                    try:
+                        x = constructorDict[tyname](x)
+                        convert = True
+                    except:
+                        raise badElem
+                else:
+                    raise badType
+        else:
+            pass
+
+        if not (x is None and opt) and not chk(x):
+            raise badCheck
+        else:
+            return (convert, x)
+
 
     def __post_init__(self):
         for (fd, fds, chk) in zip(fields, field_data, chks):
-            (seq, opt) = fds
+            (seq, opt, tyname) = fds
+            fieldName = fd[0]
+            typeName = fds[2]
+            opt = fds[1]
             val = getattr(self, fd[0])
             actual_type = type(val)
             expected_type = fd[1]
@@ -146,28 +210,36 @@ def build_dc(cname, field_info, ISPROD, Err, parent=None, memoize=True, namespac
             if seq:
                 if isinstance(val, abc.Iterable):
                     val = ilist(val)
-                    setattr(self, fd[0], val)
+                    #setattr(self, fd[0], val)
                 else:
                     raise Err("{0}.{1} must be an iterable, but it has type {2}".format(cname, fd[0], str(actual_type)))
                 # check the value of each element:
                 etype = fd[1].__args__[0]
+                vals = []
                 for x in val:
-                    if not isinstance(x, etype):
-                        xt = type(x)
-                        raise Err("{0}.{1} does not have type {2} because a value has type {3}".format(cname, fd[0], fd[1], xt))
-                    elif not chk(val):
-                        raise Err("{0}.{1} is not valid because {2} failed the check for type {3}".format(cname, fd[0], x, etype))
-                    else:
-                        pass
+                    (_, xp) = element_checker(cname, fieldName, etype, typeName, chk, opt, x)
+                    vals.append(xp)
+                valsp = ilist(vals)
+                setattr(self, fieldName, valsp)
+                    # if not isinstance(x, etype):
+                    #     xt = type(x)
+                    #     raise Err("{0}.{1} does not have type {2} because a value has type {3}".format(cname, fd[0], fd[1], xt))
+                    # elif not chk(val):
+                    #     raise Err("{0}.{1} is not valid because {2} failed the check for type {3}".format(cname, fd[0], x, etype))
+                    # else:
+                    #     pass
             else:
-                if isinstance(val, fd[1]):
-                    if not chk(val) and not (val is None and opt):
-                        raise Err("{0}.{1} is not valid because {2} failed the check for type {3}".format(cname, fd[0], val, fd[1]))
-                    else:
-                        pass
-                else:
-                    xt = type(val)
-                    raise Err("{0}.{1} has type {2}, but should have type {3}".format(cname, fd[0], xt, fd[1]))
+                (convert, xp) = element_checker(cname, fieldName, etype, typeName, chk, opt, x)
+                if convert:
+                    setattr(self, fieldName, xp)
+                # if isinstance(val, fd[1]):
+                #     if not chk(val) and not (val is None and opt):
+                #         raise Err("{0}.{1} is not valid because {2} failed the check for type {3}".format(cname, fd[0], val, fd[1]))
+                #     else:
+                #         pass
+                # else:
+                #     xt = type(val)
+                #     raise Err("{0}.{1} has type {2}, but should have type {3}".format(cname, fd[0], xt, fd[1]))
     namespace = {}
     if namespace_injector is not None:
         namespace = namespace_injector(cname, fields, field_data, parent)
@@ -186,7 +258,7 @@ def _build_classes(asdl_mod, ext_checks={},
     TYS = _build_types(SC, ext_types)
     mod  = ModuleType(asdl_mod.name)
     Err  = type(asdl_mod.name + " Error", (Exception,), {})
-
+    constructorDict = {}
     fieldData = {}
     for nm, t in asdl_mod.types.items():
         match t:
@@ -202,15 +274,17 @@ def _build_classes(asdl_mod, ext_checks={},
                     
     
     def create_prod(nm, t, T):
-        C = build_dc(nm, fieldData[nm], ISPROD,
+        C = build_dc(nm, fieldData[nm], fieldData, ISPROD, constructorDict,
                      Err, parent=T, memoize=memoize,
                      namespace_injector=namespace_injector, defaults=defaults)
+        constructorDict[nm] = C
         return C
     
     def create_sum_constructor(tname, cname, T):
-        C = build_dc(cname, fieldData[(tname, cname)], ISPROD,
+        C = build_dc(cname, fieldData[(tname, cname)], fieldData, ISPROD, constructorDict,
                      Err, parent=T, memoize=memoize,
                      namespace_injector=namespace_injector, defaults=defaults)
+        constructorDict[(tname, cname)] = C
         return C
 
     def create_sum(typ_name, t):
