@@ -24,6 +24,7 @@ def _asdl_parse(str):
 
 def _build_superclasses(asdl_mod):
     scs = {}
+    isprod = {}
     def create_invalid_init(nm):
         def invalid_init(self):
             raise GenericADTError(f"{nm} should never be instantiated")
@@ -32,9 +33,11 @@ def _build_superclasses(asdl_mod):
     for nm, v in asdl_mod.types.items():
         if isinstance(v, asdl.Sum):
             scs[nm] = type(nm, (), {"__init__" : create_invalid_init(nm)})
+            isprod[nm] = False
         elif isinstance(v, asdl.Product):
             scs[nm] = type("_" + nm, (), {"__init__" : create_invalid_init(nm)})
-    return scs
+            isprod[nm] = True
+    return scs, isprod
 
 _builtin_checks = {
     'object'  : lambda x: x is not None
@@ -56,7 +59,7 @@ def _build_checks(asdl_mod, scs, ext_checks):
     
     for nm in ext_checks:
         checks[nm] = ext_checks[nm]
-    for nm in scs:
+    for nm in scs: # I think this is unneeded.
         if nm not in checks:
             raise ADTCreationError(f"Name conflict for type '{nm}'")
         sc = scs[nm]
@@ -67,19 +70,18 @@ def _build_types(SC, ext_types):
     tys = _builtin_types.copy()
     for x in ext_types.keys():
         tys[x] = ext_types[x]
-    for x in SC.keys():
+    for x in SC.keys(): # CHECK ME: Is overwriting the right choice here?
         tys[x] = SC[x]
     return tys
         
 
-def build_dc(cname, field_spec, CHK, TYS, Err, parent=None, memoize=True, namespace_injector=None, defaults={}):
-    if parent is not None:
-        bases = (parent,)
-    else:
-        bases = tuple()
-        raise ADTCreationError("Creating a dataclass that supports weakrefs requires either slots=False or a parent class that supports weakref; we only support the latter.")
+#Factorize: Get mod to call
+#Factorize: element type maker - first just try - then if it is not iterable
+
+def build_field_data(cname, field_spec, CHK, TYS):
     fields = []
     field_data = []
+    chks = []
     for f in field_spec:
         chk = lambda x: True
         name  = f.name
@@ -91,6 +93,7 @@ def build_dc(cname, field_spec, CHK, TYS, Err, parent=None, memoize=True, namesp
         if str(tys) in CHK:
             chk = CHK[str(tys)]
         field_data.append([seq, opt])
+        chks.append(chk)
         # Exact resolution of these options is unclear to me.
         if opt and not seq: 
             if tys in defaults:
@@ -110,7 +113,16 @@ def build_dc(cname, field_spec, CHK, TYS, Err, parent=None, memoize=True, namesp
         else:
             fd = (name, tys)
         fields.append(fd)
+    return (fields, field_data, chks)
+    
 
+def build_dc(cname, field_info, ISPROD, Err, parent=None, memoize=True, namespace_injector=None, defaults={}):
+    if parent is not None:
+        bases = (parent,)
+    else:
+        bases = tuple()
+        raise ADTCreationError("Creating a dataclass that supports weakrefs requires either slots=False or a parent class that supports weakref; we only support the latter.")
+    (fields, field_data, chks) = field_info
     classdict = WeakValueDictionary({})
     def __new__(cls, *args, **kwargs):
         obj = object.__new__(cls)
@@ -120,12 +132,12 @@ def build_dc(cname, field_spec, CHK, TYS, Err, parent=None, memoize=True, namesp
         else:
             classdict[(obj)] = obj
             return obj
-    def etype_checker(self, cname, field, targetType, x):
+    def etype_checker(cname, field, targetType, x):
         pass
         
 
     def __post_init__(self):
-        for (fd, fds) in zip(fields, field_data):
+        for (fd, fds, chk) in zip(fields, field_data, chks):
             (seq, opt) = fds
             val = getattr(self, fd[0])
             actual_type = type(val)
@@ -169,29 +181,44 @@ def build_dc(cname, field_spec, CHK, TYS, Err, parent=None, memoize=True, namesp
 
 def _build_classes(asdl_mod, ext_checks={},
                    ext_types={}, memoize=True, namespace_injector=None, defaults={}):
-    SC   = _build_superclasses(asdl_mod)
+    SC, ISPROD   = _build_superclasses(asdl_mod)
     CHK  = _build_checks(asdl_mod, SC, ext_checks)
     TYS = _build_types(SC, ext_types)
-    
     mod  = ModuleType(asdl_mod.name)
-    
     Err  = type(asdl_mod.name + " Error", (Exception,), {})
-    def create_prod(nm,t):
-        C = build_dc(nm, t.fields, CHK, TYS, Err, parent=SC[nm], memoize=memoize, namespace_injector=namespace_injector, defaults=defaults)
+
+    fieldData = {}
+    for nm, t in asdl_mod.types.items():
+        match t:
+            case asdl.Product:
+                fds = build_field_data(nm, t.fields, CHK, TYS)
+                fieldData[nm] = fds
+            case asdl.Sum:
+                for c in t.types:
+                    fds = build_field_data(c.name, c.fields + t.attributes, CHK, TYS)
+                    fieldData[(nm, c.name)] = fds
+            case _:
+                raise ADTCreationError("Unexpected kind of asdl type: neither Sum nor Product.")
+                    
+    
+    def create_prod(nm, t, T):
+        C = build_dc(nm, fieldData[nm], ISPROD,
+                     Err, parent=T, memoize=memoize,
+                     namespace_injector=namespace_injector, defaults=defaults)
         return C
     
-    def create_sum_constructor(tname,cname,T,fields):
-        C = build_dc(cname, fields, CHK, TYS, Err, parent=T, memoize=memoize, namespace_injector=namespace_injector, defaults=defaults)
+    def create_sum_constructor(tname, cname, T):
+        C = build_dc(cname, fieldData[(tname, cname)], ISPROD,
+                     Err, parent=T, memoize=memoize,
+                     namespace_injector=namespace_injector, defaults=defaults)
         return C
 
-    def create_sum(typ_name,t):
+    def create_sum(typ_name, t):
         T          = SC[typ_name]
         afields    = t.attributes
         for c in t.types:
-            C      = create_sum_constructor(
-                        typ_name, c.name, T,
-                        c.fields + afields )
-            if not hasattr(mod,c.name):
+            C      = create_sum_constructor(typ_name, c.name, T)
+            if not hasattr(mod, c.name):
                 raise ADTCreationError(f"name '{c.name}' conflict in module '{mod}'")
             setattr(T, c.name, C)
             setattr(mod, c.name, C)
@@ -199,11 +226,11 @@ def _build_classes(asdl_mod, ext_checks={},
     
     for nm,t in asdl_mod.types.items():
         if isinstance(t, asdl.Product):
-            setattr(mod, nm, create_prod(nm,t))
+            setattr(mod, nm, create_prod(nm, t, SC[nm]))
         elif isinstance(t, asdl.Sum):
             setattr(mod, nm, create_sum(nm, t))
         else:
-            raise ADTCreationError("unexpected kind of asdl type: neither Sum nor Product.")
+            raise ADTCreationError("Unexpected kind of asdl type: neither Sum nor Product.")
 
     return mod
 
