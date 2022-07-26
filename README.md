@@ -1,6 +1,7 @@
-TODO
+# TODO
 
-
+-3. setup.py
+-2. Variations on the lambda calc implementation for examples - copy
 -1. Computeable defaults or better ways of setting defaults - for the optionals, I should be able to compute. But where? New risks hitting bad defaults. 
 0. Make this into a python module
 2. Binders
