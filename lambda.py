@@ -14,8 +14,10 @@ expr = App (expr lhs, expr rhs)
      | Var (var arg)
      | Lam (var arg, expr body)
 }
-""", ext_checks={"name" : is_valid_name}, ext_types={'name' : str,
-                                                     'stamp' : stamp}, defaults = {stamp : lambda: stamp()})
+""", ext_checks={"name" : is_valid_name},
+        ext_types={'name' : str,
+                   'stamp' : stamp},
+        defaults = {stamp : lambda: stamp()})
 
 
 
