@@ -8,7 +8,7 @@ def is_valid_name(x):
 L = ADT("""
 module LAM {
 
-var = (name vname, stamp* id)
+var = (name vname, name id)
 
 expr = App (expr lhs, expr rhs)
      | Var (var arg)
@@ -18,8 +18,9 @@ expr = App (expr lhs, expr rhs)
                                                      'stamp' : stamp}, defaults = {'stamp' : stamp()})
 
 
-a = L.var("a")
-App = L.App(a, a)
+a = L.var("a", "b")
+print(a)
+App = L.App(L.Var(a), L.Var(a))
 print(App)
 
 

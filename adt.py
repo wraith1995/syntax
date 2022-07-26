@@ -5,7 +5,7 @@
 
 import asdl
 from types import ModuleType
-from typing import Callable
+from typing import Callable, Optional
 from weakref import WeakValueDictionary
 from dataclasses import make_dataclass, field
 from ilist import ilist
@@ -27,7 +27,7 @@ def _build_superclasses(asdl_mod):
         if isinstance(v, asdl.Sum):
             scs[nm] = type(nm, (), {"__init__" : create_invalid_init(nm)})
         elif isinstance(v, asdl.Product):
-            scs[nm] = type(nm, (), {})
+            scs[nm] = type("_" + nm, (), {"__init__" : create_invalid_init(nm)})
     return scs
 
 _builtin_checks = {
@@ -69,7 +69,7 @@ def build_dc(cname, field_spec, CHK, TYS, parent=None, memoize=True, namespace_i
     if parent is not None:
         bases = (parent,)
     else:
-        bases = tuple([])
+        bases = tuple()
     fields = []
     field_data = []
     for f in field_spec:
@@ -87,13 +87,13 @@ def build_dc(cname, field_spec, CHK, TYS, parent=None, memoize=True, namespace_i
             if str(tys) in defaults:
                 default = defaults[str(tys)]
                 if isinstance(default, tys):
-                    fd = (name, f.ty, field(default=default))
+                    fd = (name, tys, field(default=default))
                 elif isinstance(default, Callable):
-                    fd = (name, f.ty, field(default_factory=default))
+                    fd = (name, tys, field(default_factory=default))
                 else:
                     raise Exception("Default is a bad type.")
             else:
-                fd = (name, ty.Optional[f.ty], None)
+                fd = (name, Optional[tys], None)
         elif not opt and seq: # should this be non-empty list or no default list
             fd = (name, ilist[tys])
         elif opt and seq:
@@ -115,7 +115,7 @@ def build_dc(cname, field_spec, CHK, TYS, parent=None, memoize=True, namespace_i
         else:
             classdict[(obj)] = obj
             return obj
-        
+
     def __post_init__(self):
         for (fd, fds) in zip(fields, field_data):
             (seq, opt) = fds
@@ -147,7 +147,7 @@ def build_dc(cname, field_spec, CHK, TYS, parent=None, memoize=True, namespace_i
                         pass
                 else:
                     xt = type(val)
-                    raise Exception("{0}.{1} has type {2}, but should have type".format(cname, fd[0], xt, fd[1]))
+                    raise Exception("{0}.{1} has type {2}, but should have type {3}".format(cname, fd[0], xt, fd[1]))
     namespace = {}
     if namespace_injector is not None:
         namespace = namespace_injector(cname, fields, field_data, parent)
@@ -156,7 +156,7 @@ def build_dc(cname, field_spec, CHK, TYS, parent=None, memoize=True, namespace_i
         namespace["__new__"] = __new__
     else:
         namespace["__post_init__"] = __post_init__
-    print(fields)
+
     return make_dataclass(cname, fields, bases=bases, frozen=True, slots=True, namespace=namespace)
 
 def _build_classes(asdl_mod, ext_checks={},
@@ -169,7 +169,7 @@ def _build_classes(asdl_mod, ext_checks={},
     
     Err  = type(asdl_mod.name + "Err", (Exception,), {})
     def create_prod(nm,t):
-        C = build_dc(nm, t.fields, CHK, TYS, memoize=memoize, namespace_injector=namespace_injector, defaults=defaults)
+        C = build_dc(nm, t.fields, CHK, TYS, parent=SC[nm], memoize=memoize, namespace_injector=namespace_injector, defaults=defaults)
         return C
     
     def create_sum_constructor(tname,cname,T,fields):
