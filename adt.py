@@ -11,6 +11,12 @@ from dataclasses import make_dataclass, field
 from ilist import ilist
 import abc
 
+class ADTCreationError(Exception):
+    pass
+
+class GenericADTError(Exception):
+    pass
+
 def _asdl_parse(str):
     parser = asdl.ASDLParser()
     module = parser.parse(str)
@@ -20,7 +26,7 @@ def _build_superclasses(asdl_mod):
     scs = {}
     def create_invalid_init(nm):
         def invalid_init(self):
-            assert false, f"{nm} should never be instantiated"
+            raise GenericADTError(f"{nm} should never be instantiated")
         return invalid_init
     
     for nm, v in asdl_mod.types.items():
@@ -51,7 +57,8 @@ def _build_checks(asdl_mod, scs, ext_checks):
     for nm in ext_checks:
         checks[nm] = ext_checks[nm]
     for nm in scs:
-        assert not nm in checks, f"Name conflict for type '{nm}'"
+        if nm not in checks:
+            raise ADTCreationError(f"Name conflict for type '{nm}'")
         sc = scs[nm]
         checks[nm] = make_check(sc)
     return checks
@@ -91,7 +98,7 @@ def build_dc(cname, field_spec, CHK, TYS, Err, parent=None, memoize=True, namesp
                 elif isinstance(default, Callable):
                     fd = (name, tys, field(default_factory=default))
                 else:
-                    raise Exception("Default is a bad type.")
+                    raise ADTCreationError("Default contains a type that is not correct or is not a callable.")
             else:
                 fd = (name, Optional[tys], None)
         elif not opt and seq: # should this be non-empty list or no default list
@@ -101,6 +108,7 @@ def build_dc(cname, field_spec, CHK, TYS, Err, parent=None, memoize=True, namesp
         else:
             fd = (name, tys)
         fields.append(fd)
+
         #ordering of seq and optional is unclear to me:
         #make the type with default
         #(name, , DEFAULT)
