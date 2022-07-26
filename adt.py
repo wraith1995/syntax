@@ -83,14 +83,15 @@ def build_dc(cname, field_spec, CHK, TYS, Err, parent=None, memoize=True, namesp
         chk = lambda x: True
         name  = f.name
         if name is None:
-            name = str(f.type)
+            name = str(f.type) #FIXME: I am not sure this is correct
         seq = f.seq
         opt = f.opt
         tys = TYS[str(f.type)]
         if str(tys) in CHK:
             chk = CHK[str(tys)]
         field_data.append([seq, opt])
-        if opt and not seq:
+        # Exact resolution of these options is unclear to me.
+        if opt and not seq: 
             if tys in defaults:
                 default = defaults[tys]
                 if isinstance(default, tys):
@@ -101,7 +102,7 @@ def build_dc(cname, field_spec, CHK, TYS, Err, parent=None, memoize=True, namesp
                     raise ADTCreationError("Default contains a type that is not correct or is not a callable.")
             else:
                 fd = (name, Optional[tys], None)
-        elif not opt and seq: # should this be non-empty list or no default list
+        elif not opt and seq: # should this be a non-empty list?
             fd = (name, ilist[tys])
         elif opt and seq:
             fd = (name, ilist[tys], ilist([]))
@@ -109,15 +110,10 @@ def build_dc(cname, field_spec, CHK, TYS, Err, parent=None, memoize=True, namesp
             fd = (name, tys)
         fields.append(fd)
 
-        #ordering of seq and optional is unclear to me:
-        #make the type with default
-        #(name, , DEFAULT)
-        #define post_init
     classdict = WeakValueDictionary({})
     def __new__(cls, *args, **kwargs):
-        #build the dataclass just to hash?
         obj = object.__new__(cls)
-        cls.__init__(obj, *args, **kwargs)
+        cls.__init__(obj, *args, **kwargs) # build the data class to check if it exists. Hope this is gc'd quickly.
         if (obj) in classdict:
             return classdict[(obj)]
         else:
@@ -130,14 +126,14 @@ def build_dc(cname, field_spec, CHK, TYS, Err, parent=None, memoize=True, namesp
             val = getattr(self, fd[0])
             actual_type = type(val)
             expected_type = fd[1]
-            #GOSH why can't python typing actually just be good
+            # Check the sequence-ness 
             if seq:
                 if isinstance(val, abc.Iterable):
                     val = ilist(val)
                     setattr(self, fd[0], val)
                 else:
                     raise Err("{0}.{1} must be an iterable, but it has type {2}".format(cname, fd[0], str(actual_type)))
-                #check the value of each element
+                # check the value of each element:
                 etype = fd[1].__args__[0]
                 for x in val:
                     if not isinstance(x, etype):
@@ -191,8 +187,8 @@ def _build_classes(asdl_mod, ext_checks={},
             C      = create_sum_constructor(
                         typ_name, c.name, T,
                         c.fields + afields )
-            assert (not hasattr(mod,c.name)), (
-                f"name '{c.name}' conflict in module '{mod}'")
+            if not hasattr(mod,c.name):
+                raise ADTCreationError(f"name '{c.name}' conflict in module '{mod}'")
             setattr(T, c.name, C)
             setattr(mod, c.name, C)
         return T
@@ -202,7 +198,8 @@ def _build_classes(asdl_mod, ext_checks={},
             setattr(mod, nm, create_prod(nm,t))
         elif isinstance(t, asdl.Sum):
             setattr(mod, nm, create_sum(nm, t))
-        else: assert false, "unexpected kind of asdl type"
+        else:
+            raise ADTCreationError("unexpected kind of asdl type: neither Sum nor Product.")
 
     return mod
 
