@@ -16,5 +16,6 @@ TODO
 11. Consistent module definition.
 12. Logging intergration
 13. Tests
+14. More flexible copy notions?
 
 

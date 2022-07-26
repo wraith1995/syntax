@@ -51,7 +51,7 @@ def freevars(e : L.expr) -> set[L.var]:
 def alpha(e : L.expr) -> L.expr:
     fvs = freevars(e)
     copies = {x : x for x in fvs}
-    return e.__copy__(copies=copies) # copy everything except these.
+    return e.__copy__(copies=copies) # copy everything except these i.e recreate all vars but this.
 
 #write alpha convert version
 def subst(x : L.var, s : L.expr, e : L.expr) -> L.expr:
