@@ -65,7 +65,7 @@ def _build_types(SC, ext_types):
     return tys
         
 
-def build_dc(cname, field_spec, CHK, TYS, parent=None, memoize=True, namespace_injector=None, defaults={}):
+def build_dc(cname, field_spec, CHK, TYS, Err, parent=None, memoize=True, namespace_injector=None, defaults={}):
     if parent is not None:
         bases = (parent,)
     else:
@@ -128,26 +128,26 @@ def build_dc(cname, field_spec, CHK, TYS, parent=None, memoize=True, namespace_i
                     val = ilist(val)
                     setattr(self, fd[0], val)
                 else:
-                    raise Exception("{0}.{1} must be an iterable, but it has type {2}".format(cname, fd[0], str(actual_type)))
+                    raise Err("{0}.{1} must be an iterable, but it has type {2}".format(cname, fd[0], str(actual_type)))
                 #check the value of each element
                 etype = fd[1].__args__[0]
                 for x in val:
                     if not isinstance(x, etype):
                         xt = type(x)
-                        raise Exception("{0}.{1} does not have type {2} because a value has type {3}".format(cname, fd[0], fd[1], xt))
+                        raise Err("{0}.{1} does not have type {2} because a value has type {3}".format(cname, fd[0], fd[1], xt))
                     elif not chk(val):
-                        raise Exception("{0}.{1} is not valid because {2} failed the check for type {3}".format(cname, fd[0], x, etype))
+                        raise Err("{0}.{1} is not valid because {2} failed the check for type {3}".format(cname, fd[0], x, etype))
                     else:
                         pass
             else:
                 if isinstance(val, fd[1]):
                     if not chk(val) and not (val is None and opt):
-                        raise Exception("{0}.{1} is not valid because {2} failed the check for type {3}".format(cname, fd[0], val, fd[1]))
+                        raise Err("{0}.{1} is not valid because {2} failed the check for type {3}".format(cname, fd[0], val, fd[1]))
                     else:
                         pass
                 else:
                     xt = type(val)
-                    raise Exception("{0}.{1} has type {2}, but should have type {3}".format(cname, fd[0], xt, fd[1]))
+                    raise Err("{0}.{1} has type {2}, but should have type {3}".format(cname, fd[0], xt, fd[1]))
     namespace = {}
     if namespace_injector is not None:
         namespace = namespace_injector(cname, fields, field_data, parent)
@@ -169,11 +169,11 @@ def _build_classes(asdl_mod, ext_checks={},
     
     Err  = type(asdl_mod.name + " Error", (Exception,), {})
     def create_prod(nm,t):
-        C = build_dc(nm, t.fields, CHK, TYS, parent=SC[nm], memoize=memoize, namespace_injector=namespace_injector, defaults=defaults)
+        C = build_dc(nm, t.fields, CHK, TYS, Err, parent=SC[nm], memoize=memoize, namespace_injector=namespace_injector, defaults=defaults)
         return C
     
     def create_sum_constructor(tname,cname,T,fields):
-        C = build_dc(cname, fields, CHK, TYS, parent=T, memoize=memoize, namespace_injector=namespace_injector, defaults=defaults)
+        C = build_dc(cname, fields, CHK, TYS, Err, parent=T, memoize=memoize, namespace_injector=namespace_injector, defaults=defaults)
         return C
 
     def create_sum(typ_name,t):
