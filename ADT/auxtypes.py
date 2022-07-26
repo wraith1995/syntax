@@ -19,3 +19,5 @@ class stamp:
         return stamp(args=self.args)
     def __deepcopy__(self):
         return stamp(args=self.args)
+def defaultStamp():
+    return stamp()

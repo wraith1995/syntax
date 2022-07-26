@@ -1,6 +1,8 @@
 import typing as ty
 from collections.abc import Iterable
+
 T = ty.TypeVar('T')
+
 class ilist(ty.Generic[T], ty.Sequence[T]):
     def __init__(self, args : ty.Iterable[T]) -> None:
         self.data = tuple(args)

@@ -10,7 +10,7 @@ from collections.abc import Sequence, Mapping
 from weakref import WeakValueDictionary
 from dataclasses import make_dataclass, field, is_dataclass, replace
 from copy import copy, deepcopy
-from ilist import ilist
+from .ilist import ilist
 import abc
 
 class ADTCreationError(Exception):

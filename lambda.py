@@ -1,5 +1,5 @@
-from adt import ADT
-from auxtypes import stamp
+from ADT import ADT, stamp
+
 def is_valid_name(x):
     return type(x) is str
 
