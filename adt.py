@@ -226,18 +226,22 @@ def build_dc(cname, field_info, fieldData, ISPROD, constructorDict,  Err,
                 (convert, xp) = element_checker(cname, fieldName, fd[1], typeName, chk, opt, val)
                 if convert:
                     object.__setattr__(self, fieldName, xp)  #OH GOD I AM SORRY.
-    def mcopy(self, deep=False):
+    def mcopy(self, deep=False, copies={}, complete=False):
         d = {}
         for fd in fields:
             temp = getattr(self, fd[0])
-            if is_dataclass(temp):
+            if temp in copies and not complete:
+                d[fd[0]] = copies[temp]
+            elif is_dataclass(temp):
                 op = getattr(temp, "__copy__", None)
                 if isinstance(op, Callable):
-                    d[fd[0]] = temp.__copy__(deep=deep)
+                    d[fd[0]] = temp.__copy__(deep=deep, copies=copies, complete=complete)
+                    copies[temp] = d[fd[0]]
                 else:
                     d[fd[0]] = deepcopy(temp) if deep else copy(temp)
             else:
                 d[fd[0]] = deepcopy(temp) if deep else copy(temp)
+            
         return replace(self, **d)
     def dcopy(self):
         return mcopy(self, deep=True)
