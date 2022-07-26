@@ -84,8 +84,8 @@ def build_dc(cname, field_spec, CHK, TYS, parent=None, memoize=True, namespace_i
             chk = CHK[str(tys)]
         field_data.append([seq, opt])
         if opt and not seq:
-            if str(tys) in defaults:
-                default = defaults[str(tys)]
+            if tys in defaults:
+                default = defaults[tys]
                 if isinstance(default, tys):
                     fd = (name, tys, field(default=default))
                 elif isinstance(default, Callable):
@@ -167,7 +167,7 @@ def _build_classes(asdl_mod, ext_checks={},
     
     mod  = ModuleType(asdl_mod.name)
     
-    Err  = type(asdl_mod.name + "Err", (Exception,), {})
+    Err  = type(asdl_mod.name + " Error", (Exception,), {})
     def create_prod(nm,t):
         C = build_dc(nm, t.fields, CHK, TYS, parent=SC[nm], memoize=memoize, namespace_injector=namespace_injector, defaults=defaults)
         return C
@@ -228,11 +228,9 @@ def ADT(asdl_str, ext_types={}, ext_checks={}, defaults={}, memoize=True):
         Type-checking functions for all external (undefined) types
         that are not "built-in".
         "built-in" types, and corresponding Python types are
-        *   'string' - str
-        *   'int' - int
-        *   'float' - float
-        *   'bool' - bool
         *   'object' - (anything except None)
+    ext_types : dict of types, required
+        Dictionary of external types to check against.
 
     Returns
     =================
