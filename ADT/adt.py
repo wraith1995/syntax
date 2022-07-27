@@ -200,21 +200,21 @@ def build_dc(cname, field_info, fieldData, ISPROD, constructorDict,
                         try:
                             x = constructorDict[tyname](*x)
                             convert = True
-                        except:
+                        except BaseException:
                             raise badSeq
                 elif isinstance(x, Mapping):
                     if minArgs <= len(x) <= maxArgs:
                         try:
                             x = constructorDict[tyname](**x)
                             convert = True
-                        except:
+                        except BaseException:
                             raise badSeq
                 elif singleType is not None and isinstance(x, singleType):
                     # How does opt interact with this case?
                     try:
                         x = constructorDict[tyname](x)
                         convert = True
-                    except:
+                    except BaseException:
                         raise badElem
                 else:
                     raise badType
