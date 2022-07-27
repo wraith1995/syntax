@@ -325,7 +325,6 @@ def build_dc(cname, field_info, fieldData, ISPROD, constructorDict,
                     else:
                         pass
                 defs[x] = y
-                print(defs)
                 return True
         else:
             return type(x) == type(y) and equiv(x, y)

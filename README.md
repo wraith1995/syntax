@@ -14,6 +14,6 @@
 11. Functorial IRs
 12. Logging intergration
 14. More flexible copy notions.
-15. github integrations
-16.  Variations on the lambda calc implementation for examples. See (0)
-
+15. Github integrations
+16. Variations on the lambda calc implementation for examples. See (0)
+17. More consistent management and exporting of internally created definitions (e.g. internally defined, fields, etc).
