@@ -1,4 +1,4 @@
-from ADT import ADT, stamp
+from adt import ADT, stamp
 
 def is_valid_name(x):
     return type(x) is str
