@@ -7,6 +7,7 @@ import asdl
 from types import ModuleType
 from typing import Callable, Optional
 from collections.abc import Sequence, Mapping
+from collections import OrderedDict
 from weakref import WeakValueDictionary
 from dataclasses import make_dataclass, field, is_dataclass, replace
 from copy import copy, deepcopy
@@ -130,8 +131,9 @@ def build_field_data(cname, field_spec, CHK, TYS, defaults):
     return (fields, field_data, chks)
 
 
-def build_dc(cname, field_info, fieldData, ISPROD, constructorDict,  Err,
-             parent=None, memoize=True, namespace_injector=None, defaults={}):
+def build_dc(cname, field_info, fieldData, ISPROD, constructorDict,
+             internallyDefined, Err, parent=None, memoize=True,
+             namespace_injector=None, defaults={}):
     if parent is not None:
         bases = (parent,)
     else:
@@ -262,15 +264,11 @@ def build_dc(cname, field_info, fieldData, ISPROD, constructorDict,  Err,
             temp = getattr(self, fd[0])
             if temp in copies and not complete:
                 d[fd[0]] = copies[temp]
-            elif is_dataclass(temp):
-                op = getattr(temp, "__copy__", None)
-                if isinstance(op, Callable):
-                    d[fd[0]] = temp.__copy__(deep=deep,
-                                             copies=copies,
-                                             complete=complete)
-                    copies[temp] = d[fd[0]]
-                else:
-                    d[fd[0]] = deepcopy(temp) if deep else copy(temp)
+            elif type(temp) in internallyDefined:  # Internal definitions.
+                d[fd[0]] = temp.__copy__(deep=deep,
+                                         copies=copies,
+                                         complete=complete)
+                copies[temp] = d[fd[0]]
             else:
                 d[fd[0]] = deepcopy(temp) if deep else copy(temp)
 
@@ -279,6 +277,68 @@ def build_dc(cname, field_info, fieldData, ISPROD, constructorDict,  Err,
     def dcopy(self):
         return mcopy(self, deep=True)
 
+    def __contains__(self, other):
+        if self == other:
+            return True
+        else:
+            for fd in fields:
+                temp = getattr(self, fd[0])
+                if type(temp) in internallyDefined:
+                    if temp.__contains__(other):
+                        return True
+                    else:
+                        pass
+            return False
+
+    # FIXME: We clearly need types of iterations for this.
+    # Iterate over the internal definitions vs over the external definitions.
+    # FIXME: I should not be using fields here I think? Use dataclasses's
+    def isdisjoint(self, other):
+        if self in other:
+            return False
+        else:
+            for fd in fields:
+                temp = getattr(self, fd[0])
+                if type(temp) in internallyDefined:
+                    if temp.isdisjoint(other):
+                        pass
+                    else:
+                        return False
+            return True
+
+    def __isomorphism__(x, y, defs, equiv):
+        if type(x) in internallyDefined and type(y) in internallyDefined:
+            if x is y:
+                raise Err("Ismorpmism of non-disjoint objects")
+            elif x in defs:
+                return defs[x] == y
+            else:
+                for fd in fields:
+                    temp1 = getattr(x, fd[0])
+                    temp2 = getattr(y, fd[0])
+                    if type(temp1) in internallyDefined:
+                        fine = temp1.__isomorphism__(temp2, defs, equiv)
+                    else:
+                        fine = type(x) == type(y) and equiv(x, y)
+                    if not fine:
+                        return fine
+                    else:
+                        pass
+                defs[x] = y
+                print(defs)
+                return True
+        else:
+            return type(x) == type(y) and equiv(x, y)
+
+    def isomorphism(self, other, equiv=lambda x, y: True):
+        if type(other) not in internallyDefined:
+            raise Err("Isomorphism not defined on external types")
+
+        mapper = OrderedDict()
+        if self.__isomorphism__(other, mapper, equiv):
+            return mapper
+        else:
+            return None
     namespace = {}
     if namespace_injector is not None:
         namespace = namespace_injector(cname, fields, field_data, parent)
@@ -289,7 +349,11 @@ def build_dc(cname, field_info, fieldData, ISPROD, constructorDict,  Err,
         namespace["__post_init__"] = __post_init__
     namespace["__copy__"] = mcopy
     namespace["copy"] = mcopy
-    namespace["deepcopy"] = dcopy
+    namespace["__deepcopy__"] = dcopy
+    namespace["__contains__"] = __contains__
+    namespace["isdisjoint"] = isdisjoint
+    namespace["isomorphism"] = isomorphism
+    namespace["__isomorphism__"] = __isomorphism__
 
     return make_dataclass(cname, fields, bases=bases,
                           frozen=True,
@@ -306,6 +370,7 @@ def _build_classes(asdl_mod, ext_checks={},
     Err = type(asdl_mod.name + " Error", (Exception,), {})
     constructorDict = {}
     fieldData = {}
+    internallyDefined = set()
     for nm, t in asdl_mod.types.items():
         if isinstance(t, asdl.Product):
             fds = build_field_data(nm, t.fields, CHK, TYS, defaults)
@@ -319,18 +384,21 @@ def _build_classes(asdl_mod, ext_checks={},
             raise ADTCreationError("Unexpected asdl type: not Sum nor Product")
 
     def create_prod(nm, t, T):
-        C = build_dc(nm, fieldData[nm], fieldData, ISPROD, constructorDict,
+        C = build_dc(nm, fieldData[nm], fieldData, ISPROD,
+                     constructorDict, internallyDefined,
                      Err, parent=T, memoize=memoize,
                      namespace_injector=namespace_injector, defaults=defaults)
         constructorDict[nm] = C
+        internallyDefined.add(C)
         return C
 
     def create_sum_constructor(tname, cname, T):
         C = build_dc(cname, fieldData[(tname, cname)], fieldData,
-                     ISPROD, constructorDict,
+                     ISPROD, constructorDict, internallyDefined,
                      Err, parent=T, memoize=memoize,
                      namespace_injector=namespace_injector, defaults=defaults)
         constructorDict[(tname, cname)] = C
+        internallyDefined.add(C)
         return C
 
     def create_sum(typ_name, t):

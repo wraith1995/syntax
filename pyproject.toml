@@ -24,3 +24,6 @@ classifiers = [
 
 [tool.flake8]
 ignore = ['E731', 'E722']
+
+[flake8]
+ignore = ['E731', 'E722']
