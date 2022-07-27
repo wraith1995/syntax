@@ -1,9 +1,11 @@
 from adt import ADT, stamp
 
+
 def is_valid_name(x):
     return type(x) is str
 
-#We need to ensure simple conversion in the matching...
+# We need to ensure simple conversion in the matching...
+
 
 L = ADT("""
 module LAM {
@@ -14,19 +16,16 @@ expr = App (expr lhs, expr rhs)
      | Var (var arg)
      | Lam (var arg, expr body)
 }
-""", ext_checks={"name" : is_valid_name},
-        ext_types={'name' : str,
-                   'stamp' : stamp},
-        defaults = {stamp : lambda: stamp()})
-
-
-
+""", ext_checks={"name": is_valid_name},
+        ext_types={'name': str,
+                   'stamp': stamp},
+        defaults={stamp: lambda: stamp()})
 
 q = L.Var("a")
 print(q)
 a = L.var("a")
 b = L.var("a")
-print(a,b)
+print(a, b)
 
 App = L.Lam(a, L.Var(a))
 Appp = L.Lam(a, L.Var(a))
@@ -37,8 +36,10 @@ oapp = App.__copy__()
 print(oapp is not App)
 print(oapp)
 print("Lambda eval test")
-#Properties?
-def freevars(e : L.expr) -> set[L.var]:
+# Properties?
+
+
+def freevars(e: L.expr) -> set[L.var]:
     match e:
         case L.Var(v):
             return set([v])
@@ -49,14 +50,18 @@ def freevars(e : L.expr) -> set[L.var]:
             r1 = freevars(e1)
             r2 = freevars(e2)
             return r1.union(r2)
-#Alpha conversion... change the names of all bound vars
-def alpha(e : L.expr) -> L.expr:
-    fvs = freevars(e)
-    copies = {x : x for x in fvs}
-    return e.__copy__(copies=copies) # copy everything except these i.e recreate all vars but this.
+# Alpha conversion... change the names of all bound vars
 
-#write alpha convert version
-def subst(x : L.var, s : L.expr, e : L.expr) -> L.expr:
+
+def alpha(e: L.expr) -> L.expr:
+    fvs = freevars(e)
+    copies = {x: x for x in fvs}
+    # copy everything except these i.e recreate all vars but this.
+    return e.__copy__(copies=copies)
+
+
+# write alpha convert version
+def subst(x: L.var, s: L.expr, e: L.expr) -> L.expr:
     match e:
         case L.Var(a):
             if a == x:
@@ -77,7 +82,7 @@ def subst(x : L.var, s : L.expr, e : L.expr) -> L.expr:
                     return L.Lam(v, subst(x, s, body))
 
 
-def evp(a : L.expr) -> L.expr:
+def evp(a: L.expr) -> L.expr:
     match a:
         case L.Var(var):
             return L.Var(var)
@@ -92,6 +97,7 @@ def evp(a : L.expr) -> L.expr:
                     return evp(L.App(fp, x))
                 case _:
                     return L.App(fp, x)
+
 
 vara = L.var("a")
 varb = L.var("b")
