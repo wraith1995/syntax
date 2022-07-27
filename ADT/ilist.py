@@ -1,25 +1,28 @@
 import typing as ty
-from collections.abc import Iterable
 
 T = ty.TypeVar('T')
 
+
 class ilist(ty.Generic[T], ty.Sequence[T]):
-    def __init__(self, args : ty.Iterable[T]) -> None:
+
+    def __init__(self, args: ty.Iterable[T]) -> None:
         self.data = tuple(args)
         self.size = len(self.data)
-    def __getitem__(self, x : int) -> T:
+
+    def __getitem__(self, x: int) -> T:
         return self.data[x]
-    def __contains__(self, key : T) -> bool:
+
+    def __contains__(self, key: T) -> bool:
         return key in self.data
-    # def __iter__(self) -> ty.List[T]:
-    #     return list(self.data)
+
     def __len__(self) -> int:
         return self.size
+
     def __hash__(self) -> int:
         return hash(self.data)
-    #append, reverse, etc...
 
-    #matching
+
+# matching
 # t = ilist([1,2,3])
 # match t:
 #     case [a,b]:
