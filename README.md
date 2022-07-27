@@ -1,21 +1,19 @@
-# TODO
+# TODO (in no particular order)
 
-0. flake8
-1. Computeable defaults or better ways of setting defaults - for the optionals, I should be able to compute. But where? New risks hitting bad defaults. 
-2. Binders
-3. Extension of existing ADTs
-1. Iteration over ADTs?
-4. Basic documentation.
-6. Vistior patterns
-5. Custom show or at least better show
-7. Python front end instead of text
-8. Property Holders or property decretation for better caching.
-9. Functorial IRs
-10. Pattern matching over an IR that does not exist yet?
-11. Consistent module definition.
+0. Tests.
+1. Different types of iteration methods: depth vs. breadth, external or internal, dup vs no dup, dup notion.
+2. Finer granularity defaults
+3. The problem of matching over an IR that does not yet exist.
+4. Binders unbound
+5. Extension of existing ADTs or merging of ADTS
+6. Basic documentation.
+7. Vistior patterns
+8. Caching dec for ad-hoc polymorphism.
+9. Custom show or at least better show
+10. Python front end instead of text. See (3).
+11. Functorial IRs
 12. Logging intergration
-13. Tests
-14. More flexible copy notions?
-15. setup.py
-16.  Variations on the lambda calc implementation for examples - copy
+14. More flexible copy notions.
+15. github integrations
+16.  Variations on the lambda calc implementation for examples. See (0)
 
