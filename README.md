@@ -1,6 +1,6 @@
 # TODO
 
-
+0. flake8
 1. Computeable defaults or better ways of setting defaults - for the optionals, I should be able to compute. But where? New risks hitting bad defaults. 
 2. Binders
 3. Extension of existing ADTs

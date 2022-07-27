@@ -22,3 +22,5 @@ classifiers = [
 "Homepage" = "https://github.com/wraith1995/syntax"
 "Bug Tracker" = "https://github.com/wraith1995/syntax/issues"
 
+[tool.flake8]
+ignore = ['E731', 'E722']
