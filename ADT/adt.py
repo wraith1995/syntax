@@ -310,6 +310,8 @@ def build_dc(cname, field_info, fieldData, ISPROD, constructorDict,
         if type(x) in internallyDefined and type(y) in internallyDefined:
             if x is y:
                 raise Err("Ismorpmism of non-disjoint objects")
+            elif type(x) != type(y):
+                return False
             elif x in defs:
                 return defs[x] == y
             else:
