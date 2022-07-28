@@ -252,6 +252,15 @@ def build_dc(cname, field_info, fieldData, ISPROD, constructorDict,
                     vals.append(xp)
                 valsp = ilist(vals)
                 object.__setattr__(self, fieldName, valsp)
+                # https://github.com/python/cpython/blob/bceb197947bbaebb11e01195bdce4f240fdf9332/Lib/dataclasses.py#L565
+                # Validity of this strategy is based on a careful reading
+                # of the dataclass implementation. In particular:
+                # 1. _post_init is called in init
+                # 2. hash is not precomputed before _post_init or cached
+                # 3. frozen is just a promise
+                # Ergo, when we init an object for caching, our hash
+                # is correct even with all of this frozen breaking
+                # nonsense in _post_init.
             else:
                 (convert, xp) = element_checker(cname, fieldName,
                                                 fd[1], typeName, chk, opt, val)
