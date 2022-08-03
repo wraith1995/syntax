@@ -12,7 +12,6 @@ from collections import OrderedDict
 from weakref import WeakValueDictionary
 from dataclasses import make_dataclass, field, replace
 from copy import copy, deepcopy
-import abc
 from abc import ABC, abstractmethod
 
 
