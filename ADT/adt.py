@@ -15,7 +15,6 @@ from copy import copy, deepcopy
 from abc import ABC, abstractmethod
 
 
-
 class ADTCreationError(Exception):
     pass
 

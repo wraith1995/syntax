@@ -15,5 +15,5 @@
 13. Variations on the lambda calc implementation for examples. Add these to tests.
 14. Attrs vs. Dataclasses. Attrs might save some boiler plate, but it outside standard python.
 15. Greater variation on internal errors and consistenty with python.
-16. Sanitization.
+16. psf black
 
