@@ -7,7 +7,7 @@
 import asdl
 from types import ModuleType
 from typing import Callable, Any, Union, NamedTuple
-from collections.abc import Sequence, Mapping, Collection
+from collections.abc import Sequence, Mapping, Collection, Iterable
 from collections import OrderedDict
 from weakref import WeakValueDictionary
 from dataclasses import make_dataclass, field, replace
@@ -264,7 +264,7 @@ def build_dc(env, cname, parent, fieldData, Err, mod,
             actual_type = type(val)
             # Check the sequence-ness
             if seq:
-                if isinstance(val, abc.Iterable):
+                if isinstance(val, Iterable):
                     val = tuple(val)
                 else:
                     raise Err("""{0}.{1} must be iterable,
@@ -309,6 +309,9 @@ def build_dc(env, cname, parent, fieldData, Err, mod,
                 d[fd[0]] = deepcopy(temp) if deep else copy(temp)
 
         return replace(self, **d)
+
+    def update(self, **kwargs):
+        return replace(self, **kwargs)
 
     def dcopy(self):
         return mcopy(self, deep=True)
@@ -386,6 +389,7 @@ def build_dc(env, cname, parent, fieldData, Err, mod,
         namespace["__post_init__"] = __post_init__
     namespace["__copy__"] = mcopy
     namespace["copy"] = mcopy
+    namespace["update"] = update
     namespace["__deepcopy__"] = dcopy
     namespace["__contains__"] = __contains__
     namespace["isdisjoint"] = isdisjoint
@@ -396,7 +400,10 @@ def build_dc(env, cname, parent, fieldData, Err, mod,
         return field(default_factory=x) if isinstance(x, Callable) else field(default=x)
     fields = [(fd.name, fd.ty) if not fd.hasDefault else
               (fd.name, fd.ty, fieldp(fd.default))
-              for fd in fieldData]
+              for fd in fieldData] + [("___" + cname + "__", str,
+                                       field(default=("___" + cname + "__"),
+                                             init=False,
+                                             repr=False))]
     return make_dataclass(cname, fields, bases=(parent,),
                           frozen=True,
                           slots=True, namespace=namespace)
