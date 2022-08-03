@@ -413,6 +413,7 @@ def _build_classes(asdl_mod, env, memoize,
                    namespace_injector=None):
     mod = ModuleType(asdl_mod.name)
     Err = type(asdl_mod.name + "Error", (Exception,), {})
+    mod.__err__ = Err
     for (name, ty) in env.superTypes.items():
         setattr(mod, name, ty)
     for (name, data) in env.constructorData.items():
