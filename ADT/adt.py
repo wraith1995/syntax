@@ -1,18 +1,20 @@
 """ A module for parsing ASDL grammars into Python Class hierarchies
     Adopted from https://raw.githubusercontent.com/gilbo/atl/master/ATL/adt.py
+    And again from https://github.com/ChezJrk/asdl/blob/master/src/asdl_adt/adt.py
 
 """
 
 import asdl
 from types import ModuleType
-from typing import Callable, Optional
-from collections.abc import Sequence, Mapping
+from typing import Callable, Any, Union, NamedTuple
+from collections.abc import Sequence, Mapping, Collection
 from collections import OrderedDict
 from weakref import WeakValueDictionary
-from dataclasses import make_dataclass, field, is_dataclass, replace
+from dataclasses import make_dataclass, field, replace
 from copy import copy, deepcopy
-from .ilist import ilist
 import abc
+from abc import ABC, abstractmethod
+
 
 
 class ADTCreationError(Exception):
@@ -23,32 +25,24 @@ class GenericADTError(Exception):
     pass
 
 
+class _AsdlAdtBase(ABC):
+    @abstractmethod
+    def __init__(self):
+        assert False, "Should be unreachable."
+
+
+class _ProdBase(_AsdlAdtBase):
+    pass
+
+
+class _SumBase(_AsdlAdtBase):
+    pass
+
+
 def _asdl_parse(str):
     parser = asdl.ASDLParser()
     module = parser.parse(str)
     return module
-
-
-def _build_superclasses(asdl_mod):
-    scs = {}
-    isprod = {}
-
-    def create_invalid_init(nm):
-
-        def invalid_init(self):
-            raise GenericADTError(f"{nm} should never be instantiated")
-        return invalid_init
-
-    for nm, v in asdl_mod.types.items():
-        if isinstance(v, asdl.Sum):
-            scs[nm] = type(nm, (),
-                           {"__init__": create_invalid_init(nm)})
-            isprod[nm] = False
-        elif isinstance(v, asdl.Product):
-            scs[nm] = type("_" + nm, (),
-                           {"__init__": create_invalid_init(nm)})
-            isprod[nm] = True
-    return scs, isprod
 
 
 _builtin_checks = {
@@ -65,83 +59,123 @@ _builtin_types = {
 }
 
 
-def _build_checks(asdl_mod, scs, ext_checks):
-    checks = _builtin_checks.copy()
-
-    def make_check(sc):
-        return lambda x: isinstance(x, sc)
-
-    for nm in ext_checks:
-        checks[nm] = ext_checks[nm]
-    for nm in scs:
-        # I think this is unneeded.
-        if nm in checks:
-            raise ADTCreationError(f"Name conflict for type '{nm}'")
-        sc = scs[nm]
-        checks[nm] = make_check(sc)
-    return checks
+class field_data(NamedTuple):
+    name: str
+    seq: bool
+    opt: bool
+    ty: type
+    chk: Callable
+    hasDefault: bool
+    default: Any
 
 
-def _build_types(SC, ext_types):
-    tys = _builtin_types.copy()
-    for x in ext_types.keys():
-        tys[x] = ext_types[x]
-    for x in SC.keys():
-        # CHECK ME: Is overwriting the right choice here?
-        tys[x] = SC[x]
-    return tys
-
-
-def build_field_data(cname, field_spec, CHK, TYS, defaults):
-    fields = []  # FIXME: These should all be nametuple for readability.
-    field_data = []
-    chks = []
-    for f in field_spec:
-        chk = lambda x: True
-        name = f.name
-        if name is None:
-            name = str(f.type)  # FIXME: I am not sure this is correct
-        seq = f.seq
-        opt = f.opt
-        tys = TYS[str(f.type)]
-        if str(tys) in CHK:
-            chk = CHK[str(tys)]
-        field_data.append([seq, opt, f.type])
-        chks.append(chk)
-        # Exact resolution of these options is unclear to me.
-        if opt and not seq:
-            if tys in defaults:
-                default = defaults[tys]
-                if isinstance(default, tys):
-                    fd = (name, tys, field(default=default))
-                elif isinstance(default, Callable):
-                    fd = (name, tys, field(default_factory=default))
-                else:
-                    raise ADTCreationError("""Default contains a type that
-                    is not correct or is not a callable.""")
-            else:
-                fd = (name, Optional[tys], None)
-        elif not opt and seq:  # should this be a non-empty list?
-            fd = (name, ilist[tys])
-        elif opt and seq:
-            fd = (name, ilist[tys], ilist([]))
-        else:
-            fd = (name, tys)
-        fields.append(fd)
-    return (fields, field_data, chks)
-
-
-def build_dc(cname, field_info, fieldData, ISPROD, constructorDict,
-             internallyDefined, Err, parent=None, memoize=True,
-             namespace_injector=None, defaults={}):
-    if parent is not None:
-        bases = (parent,)
+def build_field_cdata(outerName, f, externalTypes,
+                      internalTypes, checks, defaults):
+    if str(f.type) in internalTypes:
+        ty = internalTypes[str(f.type)]
+    elif str(f.type) in externalTypes:
+        ty = externalTypes[str(f.type)]
     else:
-        bases = tuple()
-        raise ADTCreationError("""Creating a dataclass that supports weakrefs requires either slots=False
-        or a parent class that supports weakref;
-        we only support the latter.""")
-    (fields, field_data, chks) = field_info
+        raise ADTCreationError("Type {0} not defined".format(f.type))
+    default = None
+    hasDefault = True
+    if (outerName, f.name) in defaults:
+        default = defaults[(outerName, f.name)]
+    elif (outerName, ty) in defaults:
+        default = defaults[(outerName, ty)]
+    elif ty in defaults:
+        default = defaults[ty]
+    else:
+        if f.opt:
+            hasDefault = True
+            if f.seq:
+                default = []
+            else:
+                default = None
+        else:
+            hasDefault = False
+    return field_data(f.name, f.seq, f.opt,
+                      ty,
+                      checks[str(f.type)] if str(f.type) in checks else lambda x: True,
+                      hasDefault, default)
+
+
+class constructor_data(NamedTuple):
+    sup: type
+    fields: list[field_data]
+    name: str
+    minArgs: int
+    maxArgs: int
+    minSatisfy: list[field_data]
+
+
+class ADTEnv:
+    def __init__(self, name, adsl_adt, external_types, defaults, checks):
+        self.name = name
+        self.checks = checks
+        self.defaults = defaults  # (name, field), (name, type), type
+        self.sumClass = type("sum_" + name, (_SumBase,), {})
+        self.prodClass = type("prod_" + name, (_ProdBase,), {})
+        self.superTypes = dict()
+        self.externalTypes = external_types
+        self.constructorData = dict()
+
+        def fieldValidator(flds, name, names=set()):
+            for fld in flds:
+                if fld.name in names:
+                    raise ADTCreationError("In {0}, name conflict with {1}".format(name, fld.name))
+                else:
+                    names.add(fld.name)
+            return names
+
+        for name, ty in adsl_adt.types.items():
+            if name in self.constructorData:
+                raise ADTCreationError("{0} conflicts with another name already defined".format(name))
+            if isinstance(ty, asdl.Product):
+                typ = type(name, (self.prodClass,), {})
+                self.superTypes[name] = typ
+                myattrs = set()
+                fieldValidator(ty.fields, name, names=myattrs)
+                self.constructorData[name] = (ty.fields, typ)
+            elif isinstance(ty, asdl.Sum):
+                typ = type(name, (self.sumClass,), {})
+                self.superTypes[name] = typ
+                myattrs = set()
+                fieldValidator(ty.attributes, name, names=myattrs)
+                for summand in ty.types:
+                    if summand.name in self.constructorData:
+                        raise ADTCreationError("{0} conflicts with another name already defined".format(summand.name))
+                    fieldValidator(summand.fields, summand.name, names=myattrs.copy())
+                    self.constructorData[summand.name] = ((summand.fields + ty.attributes, typ))
+            else:
+                raise ADTCreationError("ASDL item not sum nor product.")
+        for (name, (fields, ty)) in self.constructorData.copy().items():
+            fieldData = [build_field_cdata(name, f, self.externalTypes,
+                                           self.superTypes,
+                                           self.checks,
+                                           self.defaults)
+                         for f in fields]
+            maxArgs = len(fieldData)
+            minSet = list(filter(lambda x: not x.hasDefault, fieldData))
+            minArgs = len(minSet)
+            self.constructorData[name] = constructor_data(ty, fieldData, name,
+                                                          maxArgs, minArgs,
+                                                          minSet)
+        print(self.defaults)
+
+    def isInterallyDefined(self, typ):
+        return issubclass(typ, self.sumClass) or issubclass(typ, self.prodClass)
+
+    def isInternalSum(self, typ):
+        return issubclass(typ, self.sumClass)
+
+    def isInternalProduct(self, typ):
+        return issubclass(typ, self.prodClass)
+
+
+def build_dc(env, cname, parent, fieldData, Err, mod,
+             memoize=True,
+             namespace_injector=None):
     classdict = WeakValueDictionary({})
 
     def __new__(cls, *args, **kwargs):
@@ -155,11 +189,11 @@ def build_dc(cname, field_info, fieldData, ISPROD, constructorDict,
             classdict[obj] = obj
             return obj
 
-    def element_checker(cname, fieldName, targetType, tyname, chk, opt, x):
+    def element_checker(cname, fieldName, targetType, chk, opt, x):
         xt = type(x)
         badType = Err("""{0}.{1} does not have type
-        {2} because a value
-        has type {3}""".format(cname, fieldName, targetType, xt))
+        {2} because a value {3}
+        has type {4}""".format(cname, fieldName, targetType, x, xt))
         badCheck = Err("""{0}.{1} is not valid because
         {2} failed the
         check for type {3}""".format(cname, fieldName, x, targetType))
@@ -174,22 +208,15 @@ def build_dc(cname, field_info, fieldData, ISPROD, constructorDict,
         correct type,
         but this failed.""".format(cname, fieldName, targetType, xt, x))
 
-        earlyAble = tyname in ISPROD and ISPROD[tyname]
-        minArgs = 0
-        maxArgs = 0
+        earlyAble = env.isInternalProduct(targetType)
+        tyname = targetType.__name__
         singleType = None
         if earlyAble:
-            (ofields, ofield_data, _) = fieldData[tyname]
-            maxArgs = len(ofield_data)
-            minArgs = len(list(filter(lambda x: not x[1], ofield_data)))
+            minArgs = env.constructorData[tyname].minArgs
+            maxArgs = env.constructorData[tyname].maxArgs
             if minArgs == 1:
-                loc = -1
-                for (idx, y) in enumerate(ofield_data):
-                    if not y[1]:
-                        loc = idx
-                        break
-                singleType = ofields[loc][1]
-
+                sf = env.constructorData[tyname].minSatisfy[0]
+                singleType = list[sf.ty] if sf.seq else sf.ty
         convert = False
         if not isinstance(x, targetType):
             if not earlyAble:
@@ -198,21 +225,21 @@ def build_dc(cname, field_info, fieldData, ISPROD, constructorDict,
                 if isinstance(x, Sequence):
                     if minArgs <= len(x) <= maxArgs:
                         try:
-                            x = constructorDict[tyname](*x)
+                            x = getattr(mod, tyname)(*x)
                             convert = True
                         except BaseException:
                             raise badSeq
                 elif isinstance(x, Mapping):
                     if minArgs <= len(x) <= maxArgs:
                         try:
-                            x = constructorDict[tyname](**x)
+                            x = getattr(mod, tyname)(**x)
                             convert = True
                         except BaseException:
                             raise badSeq
                 elif singleType is not None and isinstance(x, singleType):
                     # How does opt interact with this case?
                     try:
-                        x = constructorDict[tyname](x)
+                        x = getattr(mod, tyname)(x)
                         convert = True
                     except BaseException:
                         raise badElem
@@ -227,30 +254,30 @@ def build_dc(cname, field_info, fieldData, ISPROD, constructorDict,
             return (convert, x)
 
     def __post_init__(self):
-        for (fd, fds, chk) in zip(fields, field_data, chks):
-            (seq, opt, tyname) = fds
-            fieldName = fd[0]
-            typeName = fds[2]
-            opt = fds[1]
-            val = getattr(self, fd[0])
+        for fd in fieldData:
+            seq = fd.seq
+            opt = fd.opt
+            chk = fd.chk
+            fieldName = fd.name
+            ty = fd.ty
+            val = getattr(self, fieldName)
             actual_type = type(val)
             # Check the sequence-ness
             if seq:
                 if isinstance(val, abc.Iterable):
-                    val = ilist(val)
+                    val = tuple(val)
                 else:
                     raise Err("""{0}.{1} must be iterable,
                     but it has type {2}""".format(cname,
-                                                  fd[0],
-                                                  str(actual_type)))
+                                                  fieldName,
+                                                  actual_type))
                 # check the value of each element:
-                etype = fd[1].__args__[0]
                 vals = []
                 for x in val:
                     (_, xp) = element_checker(cname, fieldName,
-                                              etype, typeName, chk, opt, x)
+                                              ty, chk, opt, x)
                     vals.append(xp)
-                valsp = ilist(vals)
+                valsp = tuple(vals)
                 object.__setattr__(self, fieldName, valsp)
                 # https://github.com/python/cpython/blob/bceb197947bbaebb11e01195bdce4f240fdf9332/Lib/dataclasses.py#L565
                 # Validity of this strategy is based on a careful reading
@@ -263,17 +290,17 @@ def build_dc(cname, field_info, fieldData, ISPROD, constructorDict,
                 # nonsense in _post_init.
             else:
                 (convert, xp) = element_checker(cname, fieldName,
-                                                fd[1], typeName, chk, opt, val)
+                                                ty, chk, opt, val)
                 if convert:
                     object.__setattr__(self, fieldName, xp)  # GOD I AM SORRY.
 
     def mcopy(self, deep=False, copies={}, complete=False):
         d = {}
-        for fd in fields:
-            temp = getattr(self, fd[0])
+        for fd in fieldData:
+            temp = getattr(self, fd.name)
             if temp in copies and not complete:
                 d[fd[0]] = copies[temp]
-            elif type(temp) in internallyDefined:  # Internal definitions.
+            elif env.isInterallyDefined(fd.ty):  # Internal definitions.
                 d[fd[0]] = temp.__copy__(deep=deep,
                                          copies=copies,
                                          complete=complete)
@@ -290,9 +317,9 @@ def build_dc(cname, field_info, fieldData, ISPROD, constructorDict,
         if self == other:
             return True
         else:
-            for fd in fields:
-                temp = getattr(self, fd[0])
-                if type(temp) in internallyDefined:
+            for fd in fieldData:
+                temp = getattr(self, fd.ty)
+                if env.isInterallyDefined(fd.ty):
                     if temp.__contains__(other):
                         return True
                     else:
@@ -306,9 +333,9 @@ def build_dc(cname, field_info, fieldData, ISPROD, constructorDict,
         if self in other:
             return False
         else:
-            for fd in fields:
+            for fd in fieldData:
                 temp = getattr(self, fd[0])
-                if type(temp) in internallyDefined:
+                if env.isInterallyDefined(fd.ty):
                     if temp.isdisjoint(other):
                         pass
                     else:
@@ -316,7 +343,7 @@ def build_dc(cname, field_info, fieldData, ISPROD, constructorDict,
             return True
 
     def __isomorphism__(x, y, defs, equiv):
-        if type(x) in internallyDefined and type(y) in internallyDefined:
+        if env.isInterallyDefined(type(x)) and env.isInterallyDefined(type(y)):
             if x is y:
                 raise Err("Ismorpmism of non-disjoint objects")
             elif type(x) != type(y):
@@ -324,10 +351,10 @@ def build_dc(cname, field_info, fieldData, ISPROD, constructorDict,
             elif x in defs:
                 return defs[x] == y
             else:
-                for fd in fields:
-                    temp1 = getattr(x, fd[0])
-                    temp2 = getattr(y, fd[0])
-                    if type(temp1) in internallyDefined:
+                for fd in fieldData:
+                    temp1 = getattr(x, fd.name)
+                    temp2 = getattr(y, fd.name)
+                    if env.isInterallyDefined(fd.ty):
                         fine = temp1.__isomorphism__(temp2, defs, equiv)
                     else:
                         fine = type(x) == type(y) and equiv(x, y)
@@ -341,7 +368,7 @@ def build_dc(cname, field_info, fieldData, ISPROD, constructorDict,
             return type(x) == type(y) and equiv(x, y)
 
     def isomorphism(self, other, equiv=lambda x, y: True):
-        if type(other) not in internallyDefined:
+        if not env.isInterallyDefined(type(other)):
             raise Err("Isomorphism not defined on external types")
 
         mapper = OrderedDict()
@@ -351,7 +378,7 @@ def build_dc(cname, field_info, fieldData, ISPROD, constructorDict,
             return None
     namespace = {}
     if namespace_injector is not None:
-        namespace = namespace_injector(cname, fields, field_data, parent)
+        namespace = namespace_injector(cname, parent, fieldData, Err, parent)
     if memoize:
         namespace["__post_init__"] = __post_init__
         namespace["__new__"] = __new__
@@ -365,74 +392,35 @@ def build_dc(cname, field_info, fieldData, ISPROD, constructorDict,
     namespace["isomorphism"] = isomorphism
     namespace["__isomorphism__"] = __isomorphism__
 
-    return make_dataclass(cname, fields, bases=bases,
+    def fieldp(x):
+        return field(default_factory=x) if isinstance(x, Callable) else field(default=x)
+    fields = [(fd.name, fd.ty) if not fd.hasDefault else
+              (fd.name, fd.ty, fieldp(fd.default))
+              for fd in fieldData]
+    return make_dataclass(cname, fields, bases=(parent,),
                           frozen=True,
                           slots=True, namespace=namespace)
 
 
-def _build_classes(asdl_mod, ext_checks={},
-                   ext_types={}, memoize=True,
-                   namespace_injector=None, defaults={}):
-    SC, ISPROD = _build_superclasses(asdl_mod)
-    CHK = _build_checks(asdl_mod, SC, ext_checks)
-    TYS = _build_types(SC, ext_types)
+def _build_classes(asdl_mod, env, memoize,
+                   namespace_injector=None):
     mod = ModuleType(asdl_mod.name)
-    Err = type(asdl_mod.name + " Error", (Exception,), {})
-    constructorDict = {}
-    fieldData = {}
-    internallyDefined = set()
-    for nm, t in asdl_mod.types.items():
-        if isinstance(t, asdl.Product):
-            fds = build_field_data(nm, t.fields, CHK, TYS, defaults)
-            fieldData[nm] = fds
-        elif isinstance(t, asdl.Sum):
-            for c in t.types:
-                fds = build_field_data(c.name, c.fields + t.attributes,
-                                       CHK, TYS, defaults)
-                fieldData[(nm, c.name)] = fds
-        else:
-            raise ADTCreationError("Unexpected asdl type: not Sum nor Product")
-
-    def create_prod(nm, t, T):
-        C = build_dc(nm, fieldData[nm], fieldData, ISPROD,
-                     constructorDict, internallyDefined,
-                     Err, parent=T, memoize=memoize,
-                     namespace_injector=namespace_injector, defaults=defaults)
-        constructorDict[nm] = C
-        internallyDefined.add(C)
-        return C
-
-    def create_sum_constructor(tname, cname, T):
-        C = build_dc(cname, fieldData[(tname, cname)], fieldData,
-                     ISPROD, constructorDict, internallyDefined,
-                     Err, parent=T, memoize=memoize,
-                     namespace_injector=namespace_injector, defaults=defaults)
-        constructorDict[(tname, cname)] = C
-        internallyDefined.add(C)
-        return C
-
-    def create_sum(typ_name, t):
-        T = SC[typ_name]
-        for c in t.types:
-            C = create_sum_constructor(typ_name, c.name, T)
-            if hasattr(mod, c.name):
-                raise ADTCreationError(f"'{c.name}' conflicts module '{mod}'")
-            setattr(T, c.name, C)
-            setattr(mod, c.name, C)
-        return T
-
-    for nm, t in asdl_mod.types.items():
-        if isinstance(t, asdl.Product):
-            setattr(mod, nm, create_prod(nm, t, SC[nm]))
-        elif isinstance(t, asdl.Sum):
-            setattr(mod, nm, create_sum(nm, t))
-        else:
-            raise ADTCreationError("Unexpected asdl type: not Sum nor Product")
-
+    Err = type(asdl_mod.name + "Error", (Exception,), {})
+    for (name, ty) in env.superTypes.items():
+        setattr(mod, name, ty)
+    for (name, data) in env.constructorData.items():
+        dc = build_dc(env, data.name, data.sup, data.fields, Err, mod,
+                      memoize=name in memoize,
+                      namespace_injector=namespace_injector)
+        setattr(mod, name, dc)
     return mod
 
 
-def ADT(asdl_str, ext_types={}, ext_checks={}, defaults={}, memoize=True):
+def ADT(asdl_str: str,
+        ext_types: Mapping[str, Callable] = {},
+        ext_checks: Mapping[str, type] = {},
+        defaults: Mapping[str, Any] = {},
+        memoize: Union[Collection[str], bool] = True):
     """ Function that converts an ASDL grammar into a Python Module.
 
     The returned module will contain one class for every ASDL type
@@ -486,10 +474,22 @@ def ADT(asdl_str, ext_types={}, ext_checks={}, defaults={}, memoize=True):
         })
     """
     asdl_ast = _asdl_parse(asdl_str)
-    mod = _build_classes(asdl_ast, ext_checks=ext_checks,
-                         ext_types=ext_types,
-                         memoize=memoize,
-                         defaults=defaults)
+    assert isinstance(asdl_ast, asdl.Module)
+
+    env = ADTEnv(asdl_ast.name, asdl_ast,
+                 _builtin_types | ext_types,
+                 defaults,
+                 _builtin_checks | ext_checks)
+    if memoize is True:
+        memoize = set(env.constructorData.keys())
+    elif memoize is False:
+        memoize = set()
+    elif isinstance(memoize, set):
+        pass
+    else:
+        raise ADTCreationError("Memoization should be a set or Bool")
+
+    mod = _build_classes(asdl_ast, env, memoize=memoize)
     # cache values in case we might want them
     mod._ext_checks = ext_checks
     mod._ext_types = ext_types

@@ -10,13 +10,13 @@ def is_valid_name(x):
 L = ADT("""
 module LAM {
 
-var = (name vname, stamp? id)
+var = (name vname, stamp id)
 
 expr = App (expr lhs, expr rhs)
      | Var (var arg)
      | Lam (var arg, expr body)
 }
-""", ext_checks={"name": is_valid_name},
+""", ext_checks={'name': is_valid_name},
         ext_types={'name': str,
                    'stamp': stamp},
         defaults={stamp: lambda: stamp()})
