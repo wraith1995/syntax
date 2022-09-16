@@ -13,6 +13,7 @@ from weakref import WeakValueDictionary
 from dataclasses import make_dataclass, field, replace
 from copy import copy, deepcopy
 from abc import ABC, abstractmethod
+from itertools import chain
 
 
 class ADTCreationError(Exception):
@@ -159,7 +160,6 @@ class ADTEnv:
             self.constructorData[name] = constructor_data(ty, fieldData, name,
                                                           maxArgs, minArgs,
                                                           minSet)
-        print(self.defaults)
 
     def isInterallyDefined(self, typ):
         return issubclass(typ, self.sumClass) or issubclass(typ, self.prodClass)
@@ -173,7 +173,8 @@ class ADTEnv:
 
 def build_dc(env, cname, parent, fieldData, Err, mod,
              memoize=True,
-             namespace_injector=None):
+             namespace_injector=None,
+             slots=True):
     classdict = WeakValueDictionary({})
 
     def __new__(cls, *args, **kwargs):
@@ -191,7 +192,7 @@ def build_dc(env, cname, parent, fieldData, Err, mod,
         xt = type(x)
         badType = Err("""{0}.{1} does not have type
         {2} because a value {3}
-        has type {4}""".format(cname, fieldName, targetType, x, xt))
+        has type {4} and opt={5}""".format(cname, fieldName, targetType, x, xt, opt))
         badCheck = Err("""{0}.{1} is not valid because
         {2} failed the
         check for type {3}""".format(cname, fieldName, x, targetType))
@@ -216,6 +217,8 @@ def build_dc(env, cname, parent, fieldData, Err, mod,
                 sf = env.constructorData[tyname].minSatisfy[0]
                 singleType = list[sf.ty] if sf.seq else sf.ty
         convert = False
+        if x is None and opt:
+            return (False, None)
         if not isinstance(x, targetType):
             if not earlyAble:
                 raise badType
@@ -241,6 +244,8 @@ def build_dc(env, cname, parent, fieldData, Err, mod,
                         convert = True
                     except BaseException:
                         raise badElem
+                elif x is None and opt:
+                    pass
                 else:
                     raise badType
         else:
@@ -292,21 +297,89 @@ def build_dc(env, cname, parent, fieldData, Err, mod,
                 if convert:
                     object.__setattr__(self, fieldName, xp)  # GOD I AM SORRY.
 
-    def mcopy(self, deep=False, copies={}, complete=False):
-        d = {}
-        for fd in fieldData:
-            temp = getattr(self, fd.name)
-            if temp in copies and not complete:
-                d[fd[0]] = copies[temp]
-            elif env.isInterallyDefined(fd.ty):  # Internal definitions.
-                d[fd[0]] = temp.__copy__(deep=deep,
-                                         copies=copies,
-                                         complete=complete)
-                copies[temp] = d[fd[0]]
-            else:
-                d[fd[0]] = deepcopy(temp) if deep else copy(temp)
+    # def mcopy(self, deep=False, copies={}, complete=False):
+    #     d = {}
+    #     for fd in fieldData:
+    #         temp = getattr(self, fd.name)
+    #         if temp in copies:
+    #             d[fd.name] = copies[temp]
+    #         elif env.isInterallyDefined(fd.ty) and temp is not None:  # Internal definitions.
+    #             if not fd.seq:
+    #                 d[fd.name] = temp.__copy__(deep=deep,
+    #                                            copies=copies,
+    #                                            complete=complete)
+    #                 copies[temp] = d[fd.name]
+    #             else:
+    #                 temp_seq = [t.__copy__(deep=deep,
+    #                                        copies=copies,
+    #                                        complete=complete)
+    #                             if t not in copies
+    #                             else copies[t]
+    #                             for t in temp]
+    #                 d[fd.name] = tuple(temp_seq)
+    #                 copies[temp] = d[fd.name]
+    #         else:
+    #             if complete:
+    #                 d[fd.name] = deepcopy(temp) if deep else copy(temp)
 
-        return replace(self, **d)
+    #     return replace(self, **d)
+
+    def mcopy(self, deep=False, copies={}, ignore=set(), onlyCopies=False,
+              copyInternal=True, copyExternal=False):
+        if self in copies:
+            return copies[self]
+        if any(issubclass(type(self), ig) for ig in ignore):
+            return self
+        rep = {}
+        for fd in fieldData:
+            ty = fd.ty
+            if ty in ignore:
+                continue
+            else:
+                temp = getattr(self, fd.name)
+                if temp is None:
+                    continue
+                temp_c = None
+                if env.isInterallyDefined(ty) and copyInternal:
+                    lst = [temp]
+                    if fd.seq:
+                        lst = temp
+                    res = []
+                    for item in lst:
+                        if item in copies:
+                            res.append(copies[item])
+                        else:
+                            item_c = item.__copy__(deep=deep,
+                                                   copies=copies,
+                                                   ignore=ignore,
+                                                   onlyCopies=onlyCopies,
+                                                   copyInternal=copyInternal,
+                                                   copyExternal=copyExternal)
+                            copies[item] = item_c
+                            res.append(item_c)
+                    if fd.seq:
+                        temp_c = tuple(res)
+                    else:
+                        temp_c = res[0]
+                elif copyExternal:
+                    lst = [temp]
+                    if fd.seq:
+                        lst = temp
+                    res = []
+                    for l in lst:
+                        res.append(deepcopy(l) if deep else copy(l))
+                    if fd.seq:
+                        temp_c = tuple(res)
+                    else:
+                        temp_c = res[0]
+                else:
+                    pass
+                if temp_c is None:
+                    continue
+                rep[fd.name] = temp_c
+        if len(rep) == 0 and onlyCopies:
+            return self
+        return replace(self, **rep)
 
     def update(self, **kwargs):
         return replace(self, **kwargs)
@@ -327,15 +400,29 @@ def build_dc(env, cname, parent, fieldData, Err, mod,
                         pass
             return False
 
+    def __iter__(self, internal: bool = True, flattenList: bool = True):
+        yield self
+        # go over fields that have interally defined types and iterate though
+        # if they are lists, iterate through them tooo
+        # make sure nothing is None.
+        nexts = chain(*[getattr(self, fd.name)
+                        if not fd.seq
+                        else chain(*(getattr(self, fd.name)))
+                        for fd in fieldData
+                        if (not internal or env.isInterallyDefined(fd.ty))
+                        and getattr(self, fd.name) is not None
+                        ])
+        yield from nexts
     # FIXME: We clearly need types of iterations for this.
     # Iterate over the internal definitions vs over the external definitions.
     # FIXME: I should not be using fields here I think? Use dataclasses's
+
     def isdisjoint(self, other):
         if self in other:
             return False
         else:
             for fd in fieldData:
-                temp = getattr(self, fd[0])
+                temp = getattr(self, fd.fieldName)
                 if env.isInterallyDefined(fd.ty):
                     if temp.isdisjoint(other):
                         pass
@@ -389,10 +476,11 @@ def build_dc(env, cname, parent, fieldData, Err, mod,
     namespace["copy"] = mcopy
     namespace["update"] = update
     namespace["__deepcopy__"] = dcopy
-    namespace["__contains__"] = __contains__
+    # namespace["__contains__"] = __contains__
     namespace["isdisjoint"] = isdisjoint
     namespace["isomorphism"] = isomorphism
     namespace["__isomorphism__"] = __isomorphism__
+    namespace["loop"] = __iter__
 
     def fieldp(x):
         return field(default_factory=x) if isinstance(x, Callable) else field(default=x)
@@ -404,11 +492,11 @@ def build_dc(env, cname, parent, fieldData, Err, mod,
                                              repr=False))]
     return make_dataclass(cname, fields, bases=(parent,),
                           frozen=True,
-                          slots=True, namespace=namespace)
+                          slots=slots, namespace=namespace)
 
 
 def _build_classes(asdl_mod, env, memoize,
-                   namespace_injector=None):
+                   namespace_injector=None, slots=False):
     mod = ModuleType(asdl_mod.name)
     Err = type(asdl_mod.name + "Error", (Exception,), {})
     mod.__err__ = Err
@@ -417,7 +505,8 @@ def _build_classes(asdl_mod, env, memoize,
     for (name, data) in env.constructorData.items():
         dc = build_dc(env, data.name, data.sup, data.fields, Err, mod,
                       memoize=name in memoize,
-                      namespace_injector=namespace_injector)
+                      namespace_injector=namespace_injector,
+                      slots=slots)
         setattr(mod, name, dc)
     return mod
 
@@ -426,7 +515,8 @@ def ADT(asdl_str: str,
         ext_types: Mapping[str, Callable] = {},
         ext_checks: Mapping[str, type] = {},
         defaults: Mapping[str, Any] = {},
-        memoize: Union[Collection[str], bool] = True):
+        memoize: Union[Collection[str], bool] = True,
+        slots: bool = False, egraph=True):
     """ Function that converts an ASDL grammar into a Python Module.
 
     The returned module will contain one class for every ASDL type
@@ -495,7 +585,7 @@ def ADT(asdl_str: str,
     else:
         raise ADTCreationError("Memoization should be a set or Bool")
 
-    mod = _build_classes(asdl_ast, env, memoize=memoize)
+    mod = _build_classes(asdl_ast, env, memoize=memoize, slots=slots)
     # cache values in case we might want them
     mod._ast = asdl_ast
     mod._defstr = asdl_str

@@ -25,6 +25,9 @@ class stamp:
 
     def __deepcopy__(self):
         return stamp(args=self.args)
+    
+    def __lt__(self, other):
+        return self.stamp < other.stamp
 
 
 def defaultStamp():

@@ -16,4 +16,4 @@
 14. Attrs vs. Dataclasses. Attrs might save some boiler plate, but it outside standard python.
 15. Greater variation on internal errors and consistenty with python.
 16. psf black
-
+17. Maps
