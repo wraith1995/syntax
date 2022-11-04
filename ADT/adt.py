@@ -517,9 +517,9 @@ def _build_classes(asdl_mod, env, memoize,
 
 
 def ADT(asdl_str: str,
-        ext_types: Mapping[str, Callable] = {},
-        ext_checks: Mapping[str, type] = {},
-        defaults: Mapping[str, Any] = {},
+        ext_types: Mapping[str, type] = {},
+        ext_checks: Mapping[str, Callable] = {},
+        defaults: Mapping[Union[str, type], Any] = {},
         memoize: Union[Collection[str], bool] = True,
         slots: bool = False):
     """ Function that converts an ASDL grammar into a Python Module.
