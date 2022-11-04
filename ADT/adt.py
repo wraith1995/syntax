@@ -1,12 +1,11 @@
 """ A module for parsing ASDL grammars into Python Class hierarchies
     Adopted from https://raw.githubusercontent.com/gilbo/atl/master/ATL/adt.py
     And again from https://github.com/ChezJrk/asdl/blob/master/src/asdl_adt/adt.py
-
 """
 
 import asdl
 from types import ModuleType
-from typing import Callable, Any, Union, NamedTuple
+from typing import Callable, Any, Union, NamedTuple, Optional
 from collections.abc import Sequence, Mapping, Collection, Iterable
 from collections import OrderedDict
 from weakref import WeakValueDictionary
@@ -75,7 +74,7 @@ def build_field_cdata(outerName, f, externalTypes,
     elif str(f.type) in externalTypes:
         ty = externalTypes[str(f.type)]
     else:
-        raise ADTCreationError("Type {0} not defined".format(f.type))
+        raise ADTCreationError("{1}: Type {0} not defined".format(f.type, f.name))
     default = None
     hasDefault = True
     if (outerName, f.name) in defaults:
@@ -95,7 +94,7 @@ def build_field_cdata(outerName, f, externalTypes,
             hasDefault = False
     return field_data(f.name, f.seq, f.opt,
                       ty,
-                      checks[str(f.type)] if str(f.type) in checks else lambda x: True,
+                      checks[str(f.type)] if str(f.type) in checks else lambda _: True,
                       hasDefault, default)
 
 
@@ -209,13 +208,16 @@ def build_dc(env, cname, parent, fieldData, Err, mod,
 
         earlyAble = env.isInternalProduct(targetType)
         tyname = targetType.__name__
-        singleType = None
+        singleType: Optional[type] = None
         if earlyAble:
             minArgs = env.constructorData[tyname].minArgs
             maxArgs = env.constructorData[tyname].maxArgs
             if minArgs == 1:
                 sf = env.constructorData[tyname].minSatisfy[0]
-                singleType = list[sf.ty] if sf.seq else sf.ty
+                singleType = sf.ty #list[sf.ty] if sf.seq else sf.ty
+        else:
+            minArgs = int("infty")
+            maxArgs = int("infty")
         convert = False
         if x is None and opt:
             return (False, None)
@@ -238,7 +240,8 @@ def build_dc(env, cname, parent, fieldData, Err, mod,
                         except BaseException:
                             raise badSeq
                 elif singleType is not None and isinstance(x, singleType):
-                    # How does opt interact with this case?
+                    # CHECK: How does opt interact with this case?
+                    # CHECK: How does this interact with seq case?
                     try:
                         x = getattr(mod, tyname)(x)
                         convert = True
@@ -297,32 +300,29 @@ def build_dc(env, cname, parent, fieldData, Err, mod,
                 if convert:
                     object.__setattr__(self, fieldName, xp)  # GOD I AM SORRY.
 
-    # def mcopy(self, deep=False, copies={}, complete=False):
-    #     d = {}
-    #     for fd in fieldData:
-    #         temp = getattr(self, fd.name)
-    #         if temp in copies:
-    #             d[fd.name] = copies[temp]
-    #         elif env.isInterallyDefined(fd.ty) and temp is not None:  # Internal definitions.
-    #             if not fd.seq:
-    #                 d[fd.name] = temp.__copy__(deep=deep,
-    #                                            copies=copies,
-    #                                            complete=complete)
-    #                 copies[temp] = d[fd.name]
-    #             else:
-    #                 temp_seq = [t.__copy__(deep=deep,
-    #                                        copies=copies,
-    #                                        complete=complete)
-    #                             if t not in copies
-    #                             else copies[t]
-    #                             for t in temp]
-    #                 d[fd.name] = tuple(temp_seq)
-    #                 copies[temp] = d[fd.name]
-    #         else:
-    #             if complete:
-    #                 d[fd.name] = deepcopy(temp) if deep else copy(temp)
 
-    #     return replace(self, **d)
+    def map(self, mapper):
+        if self in mapper:
+            return mapper[self]
+        rep = {}
+        for fd in fieldData:
+            test = env.isInterallyDefined(fd.ty)
+            temp = getattr(self, fd.name)
+            iters = []
+            if fd.seq:
+                if temp in mapper:
+                    rep[fd.name] = mapper[temp]
+                    continue
+                else:
+                    iters = temp
+            reps = [mapper[x] if x in mapper else (x.map(mapper) if test else x)
+                   for x in iters]
+            if not fd.seq:
+                rep[fd.name] = reps[0]
+            else:
+                rep[fd.name] = reps
+        return replace(self, **rep)
+
 
     def mcopy(self, deep=False, copies={}, ignore=set(), onlyCopies=False,
               copyInternal=True, copyExternal=False):
@@ -400,7 +400,7 @@ def build_dc(env, cname, parent, fieldData, Err, mod,
                         pass
             return False
 
-    def __iter__(self, internal: bool = True, flattenList: bool = True):
+    def __iter__(self, internal: bool = True):
         yield self
         # go over fields that have interally defined types and iterate though
         # if they are lists, iterate through them tooo
@@ -455,7 +455,7 @@ def build_dc(env, cname, parent, fieldData, Err, mod,
         else:
             return type(x) == type(y) and equiv(x, y)
 
-    def isomorphism(self, other, equiv=lambda x, y: True):
+    def isomorphism(self, other, equiv=lambda _: True):
         if not env.isInterallyDefined(type(other)):
             raise Err("Isomorphism not defined on external types")
 
@@ -481,6 +481,7 @@ def build_dc(env, cname, parent, fieldData, Err, mod,
     namespace["isomorphism"] = isomorphism
     namespace["__isomorphism__"] = __isomorphism__
     namespace["loop"] = __iter__
+    namespace["map"] = map
 
     def fieldp(x):
         return field(default_factory=x) if isinstance(x, Callable) else field(default=x)
@@ -490,16 +491,20 @@ def build_dc(env, cname, parent, fieldData, Err, mod,
                                        field(default=("___" + cname + "__"),
                                              init=False,
                                              repr=False))]
-    return make_dataclass(cname, fields, bases=(parent,),
-                          frozen=True,
-                          slots=slots, namespace=namespace)
+    try:
+        cls = make_dataclass(cname, fields, bases=(parent,),
+                             frozen=True,
+                             slots=slots, namespace=namespace)
+    except Exception as _:
+        raise Exception("Failed to crate class for {0} with fields {1}".format(cname, fields))
+    return cls
 
 
 def _build_classes(asdl_mod, env, memoize,
                    namespace_injector=None, slots=False):
     mod = ModuleType(asdl_mod.name)
-    Err = type(asdl_mod.name + "Error", (Exception,), {})
-    mod.__err__ = Err
+    Err: Exception = type(asdl_mod.name + "Error", (Exception,), {})
+    setattr(mod, "__err__", Err)
     for (name, ty) in env.superTypes.items():
         setattr(mod, name, ty)
     for (name, data) in env.constructorData.items():
@@ -516,7 +521,7 @@ def ADT(asdl_str: str,
         ext_checks: Mapping[str, type] = {},
         defaults: Mapping[str, Any] = {},
         memoize: Union[Collection[str], bool] = True,
-        slots: bool = False, egraph=True):
+        slots: bool = False):
     """ Function that converts an ASDL grammar into a Python Module.
 
     The returned module will contain one class for every ASDL type
@@ -587,9 +592,11 @@ def ADT(asdl_str: str,
 
     mod = _build_classes(asdl_ast, env, memoize=memoize, slots=slots)
     # cache values in case we might want them
-    mod._ast = asdl_ast
-    mod._defstr = asdl_str
-    mod._env = env
+    setattr(mod, "_ast", asdl_ast)
+    # mod._ast = asdl_ast
+    setattr(mod, "_defstr", asdl_str)
+    #mod._defstr = asdl_str
+    setattr(mod, "_env", env)
     mod.__doc__ = (f"ASDL Module Generated by ADT\n\n"
                    f"Original ASDL description:\n{asdl_str}")
     return mod
