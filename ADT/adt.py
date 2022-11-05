@@ -5,7 +5,7 @@
 
 import asdl
 from types import ModuleType
-from typing import Callable, Any, Union, NamedTuple, Optional
+from typing import Callable, Any, Union, NamedTuple, Optional, Tuple, List, Dict, Set
 from collections.abc import Sequence, Mapping, Collection, Iterable
 from collections import OrderedDict
 from weakref import WeakValueDictionary
@@ -14,6 +14,7 @@ from copy import copy, deepcopy
 from abc import ABC, abstractmethod
 from itertools import chain
 
+defaultsTy = Mapping[Union[str, type, Tuple[str, str], Tuple[str, type]], Any]
 
 class ADTCreationError(Exception):
     pass
@@ -67,8 +68,12 @@ class field_data(NamedTuple):
     default: Any
 
 
-def build_field_cdata(outerName, f, externalTypes,
-                      internalTypes, checks, defaults):
+def build_field_cdata(outerName: str,
+                      f,
+                      externalTypes: Mapping[str, type],
+                      internalTypes: Mapping[str, type],
+                      checks: Mapping[str, Callable],
+                      defaults: defaultsTy) -> field_data:
     if str(f.type) in internalTypes:
         ty = internalTypes[str(f.type)]
     elif str(f.type) in externalTypes:
@@ -108,15 +113,21 @@ class constructor_data(NamedTuple):
 
 
 class ADTEnv:
-    def __init__(self, name, adsl_adt, external_types, defaults, checks):
+    def __init__(self, name: str,
+                 adsl_adt: asdl.Module,
+                 external_types: Mapping[str, type],
+                 defaults: defaultsTy,
+                 checks: Mapping[str, Callable]):
         self.name = name
         self.checks = checks
-        self.defaults = defaults  # (name, field), (name, type), type
-        self.sumClass = type("sum_" + name, (_SumBase,), {})
-        self.prodClass = type("prod_" + name, (_ProdBase,), {})
-        self.superTypes = dict()
+        self.defaults: defaultsTy = defaults  # (name, field), (name, type), type
+        self.sumClass: type = type("sum_" + name, (_SumBase,), {})
+        self.prodClass: type = type("prod_" + name, (_ProdBase,), {})
+        self.superTypes: Dict[str, type] = dict()
         self.externalTypes = external_types
-        self.constructorData = dict()
+        self.constructorDataPre: Dict[str, Tuple[List[str], type]] = dict()
+        self.constructorData: dict[str, constructor_data] = dict()
+        
 
         def fieldValidator(flds, name, names=set()):
             for fld in flds:
@@ -134,21 +145,21 @@ class ADTEnv:
                 self.superTypes[name] = typ
                 myattrs = set()
                 fieldValidator(ty.fields, name, names=myattrs)
-                self.constructorData[name] = (ty.fields, typ)
+                self.constructorDataPre[name] = (ty.fields, typ)
             elif isinstance(ty, asdl.Sum):
                 typ = type(name, (self.sumClass,), {})
                 self.superTypes[name] = typ
                 myattrs = set()
                 fieldValidator(ty.attributes, name, names=myattrs)
                 for summand in ty.types:
-                    if summand.name in self.constructorData:
+                    if summand.name in self.constructorDataPre:
                         raise ADTCreationError("{0} conflicts with another name already defined".format(summand.name))
                     fieldValidator(summand.fields, summand.name, names=myattrs.copy())
-                    self.constructorData[summand.name] = ((summand.fields + ty.attributes, typ))
+                    self.constructorDataPre[summand.name] = ((summand.fields + ty.attributes, typ))
             else:
                 raise ADTCreationError("ASDL item not sum nor product.")
-        for (name, (fields, ty)) in self.constructorData.copy().items():
-            fieldData = [build_field_cdata(name, f, self.externalTypes,
+        for (name, (fields, ty)) in self.constructorDataPre.copy().items():
+            fieldData: list[field_data] = [build_field_cdata(name, f, self.externalTypes,
                                            self.superTypes,
                                            self.checks,
                                            self.defaults)
@@ -160,17 +171,22 @@ class ADTEnv:
                                                           maxArgs, minArgs,
                                                           minSet)
 
-    def isInterallyDefined(self, typ):
+    def isInterallyDefined(self, typ: type):
         return issubclass(typ, self.sumClass) or issubclass(typ, self.prodClass)
 
-    def isInternalSum(self, typ):
+    def isInternalSum(self, typ: type):
         return issubclass(typ, self.sumClass)
 
-    def isInternalProduct(self, typ):
+    def isInternalProduct(self, typ: type):
         return issubclass(typ, self.prodClass)
 
 
-def build_dc(env, cname, parent, fieldData, Err, mod,
+def build_dc(env: ADTEnv,
+             cname: str,
+             parent: type,
+             fieldData: list[field_data],
+             Err: type,
+             mod: ModuleType,
              memoize=True,
              namespace_injector=None,
              slots=True):
@@ -187,7 +203,10 @@ def build_dc(env, cname, parent, fieldData, Err, mod,
             classdict[obj] = obj
             return obj
 
-    def element_checker(cname, fieldName, targetType, chk, opt, x):
+    def element_checker(cname: str,
+                        fieldName: str,
+                        targetType: type,
+                        chk: Callable, opt: bool, x: Any):
         xt = type(x)
         badType = Err("""{0}.{1} does not have type
         {2} because a value {3}
@@ -392,7 +411,7 @@ def build_dc(env, cname, parent, fieldData, Err, mod,
             return True
         else:
             for fd in fieldData:
-                temp = getattr(self, fd.ty)
+                temp = getattr(self, str(fd.ty))
                 if env.isInterallyDefined(fd.ty):
                     if temp.__contains__(other):
                         return True
@@ -415,14 +434,40 @@ def build_dc(env, cname, parent, fieldData, Err, mod,
         yield from nexts
     # FIXME: We clearly need types of iterations for this.
     # Iterate over the internal definitions vs over the external definitions.
-    # FIXME: I should not be using fields here I think? Use dataclasses's
+    # FIXME: I should not be using fields here I think? Use dataclasses's internals???
+    """
+    Collections.abc
+    Ideal Itter paramters:
+    Internal vs. SumLocal vs. External: do we loop over just our types or also include outside types
+    Include Nones vs No Nones
+    Names vs nonames: do we include what field we come from if any.
+    Order: Post-order vs. pre-order vs. in order. (d vs b)
+    Flatten vs non-flatten: do we flatten lists that we find or not.
+    Order?
+
+    Other features:
+    Disjointness, containedness (Set of terms -> support set interface)
+    isomorphism (__itter__ is the same.)
+    Mapping (what do we need for CG)
+    Folding
+    Visitor pattern/rewriter pattern.
+
+    IR:
+    Ref mutability
+    Other mutability.
+    Partial frozen.
+    Mutual recursion
+    Type Checkers/other adt validators
+    
+    Functions: Recursion
+    """
 
     def isdisjoint(self, other):
         if self in other:
             return False
         else:
             for fd in fieldData:
-                temp = getattr(self, fd.fieldName)
+                temp = getattr(self, fd.name)
                 if env.isInterallyDefined(fd.ty):
                     if temp.isdisjoint(other):
                         pass
@@ -496,14 +541,17 @@ def build_dc(env, cname, parent, fieldData, Err, mod,
                              frozen=True,
                              slots=slots, namespace=namespace)
     except Exception as _:
-        raise Exception("Failed to crate class for {0} with fields {1}".format(cname, fields))
+        raise ADTCreationError("Failed to crate class for {0} with fields {1}".format(cname, fields))
     return cls
 
 
-def _build_classes(asdl_mod, env, memoize,
-                   namespace_injector=None, slots=False):
+def _build_classes(asdl_mod: asdl.Module,
+                   env: ADTEnv,
+                   memoize: Set[str],
+                   namespace_injector: Optional[Callable]=None,
+                   slots: bool=False):
     mod = ModuleType(asdl_mod.name)
-    Err: Exception = type(asdl_mod.name + "Error", (Exception,), {})
+    Err: type = type(asdl_mod.name + "Error", (Exception,), {})
     setattr(mod, "__err__", Err)
     for (name, ty) in env.superTypes.items():
         setattr(mod, name, ty)
@@ -519,7 +567,7 @@ def _build_classes(asdl_mod, env, memoize,
 def ADT(asdl_str: str,
         ext_types: Mapping[str, type] = {},
         ext_checks: Mapping[str, Callable] = {},
-        defaults: Mapping[Union[str, type], Any] = {},
+        defaults: defaultsTy = {},
         memoize: Union[Collection[str], bool] = True,
         slots: bool = False):
     """ Function that converts an ASDL grammar into a Python Module.
