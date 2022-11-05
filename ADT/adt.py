@@ -319,28 +319,57 @@ def build_dc(env: ADTEnv,
                 if convert:
                     object.__setattr__(self, fieldName, xp)  # GOD I AM SORRY.
 
+    def toMapping(mapper: Union[Mapping, Callable]) -> Mapping:
+        if isinstance(mapper, Callable):
+            raise Err("Bad use of map with Callable!")
+        else:
+            return mapper
 
-    def map(self, mapper):
+    def map(self, mapper: Union[Mapping, Callable],
+            unionSeq: bool = False): # FIXME: Mapping vs Callable.
+        isCall = isinstance(mapper, Callable)
         if self in mapper:
-            return mapper[self]
+            if isCall:
+                return mapper(self)
+            else:
+                return mapper[self]
         rep = {}
         for fd in fieldData:
             test = env.isInterallyDefined(fd.ty)
             temp = getattr(self, fd.name)
             iters = []
             if fd.seq:
-                if temp in mapper:
+                if unionSeq and not isCall and temp in mapper:
                     rep[fd.name] = mapper[temp]
                     continue
                 else:
                     iters = temp
-            reps = [mapper[x] if x in mapper else (x.map(mapper) if test else x)
-                   for x in iters]
+            reps = [toMapping(mapper)[x]
+                    if not isCall and x in mapper else (x.map(mapper) if test else x)
+                    for x in iters]
             if not fd.seq:
                 rep[fd.name] = reps[0]
             else:
                 rep[fd.name] = reps
         return replace(self, **rep)
+
+
+    def __iter__(self, internal: bool = True):
+        yield self
+        # go over fields that have interally defined types and iterate though
+        # if they are lists, iterate through them tooo
+        # make sure nothing is None.
+        nexts = chain(*[getattr(self, fd.name)
+                        if not fd.seq
+                        else chain(*(getattr(self, fd.name)))
+                        for fd in fieldData
+                        if (not internal or env.isInterallyDefined(fd.ty))
+                        and getattr(self, fd.name) is not None
+                        ])
+        yield from nexts
+    # FIXME: We clearly need types of iterations for this.
+    # Iterate over the internal definitions vs over the external definitions.
+    # FIXME: I should not be using fields here I think? Use dataclasses's internals???
 
 
     def mcopy(self, deep=False, copies={}, ignore=set(), onlyCopies=False,
@@ -418,49 +447,6 @@ def build_dc(env: ADTEnv,
                     else:
                         pass
             return False
-
-    def __iter__(self, internal: bool = True):
-        yield self
-        # go over fields that have interally defined types and iterate though
-        # if they are lists, iterate through them tooo
-        # make sure nothing is None.
-        nexts = chain(*[getattr(self, fd.name)
-                        if not fd.seq
-                        else chain(*(getattr(self, fd.name)))
-                        for fd in fieldData
-                        if (not internal or env.isInterallyDefined(fd.ty))
-                        and getattr(self, fd.name) is not None
-                        ])
-        yield from nexts
-    # FIXME: We clearly need types of iterations for this.
-    # Iterate over the internal definitions vs over the external definitions.
-    # FIXME: I should not be using fields here I think? Use dataclasses's internals???
-    """
-    Collections.abc
-    Ideal Itter paramters:
-    Internal vs. SumLocal vs. External: do we loop over just our types or also include outside types
-    Include Nones vs No Nones
-    Names vs nonames: do we include what field we come from if any.
-    Order: Post-order vs. pre-order vs. in order. (d vs b)
-    Flatten vs non-flatten: do we flatten lists that we find or not.
-    Order?
-
-    Other features:
-    Disjointness, containedness (Set of terms -> support set interface)
-    isomorphism (__itter__ is the same.)
-    Mapping (what do we need for CG)
-    Folding
-    Visitor pattern/rewriter pattern.
-
-    IR:
-    Ref mutability
-    Other mutability.
-    Partial frozen.
-    Mutual recursion
-    Type Checkers/other adt validators
-    
-    Functions: Recursion
-    """
 
     def isdisjoint(self, other):
         if self in other:
