@@ -45,7 +45,7 @@ def fixture_ueq_grammar():
                  | Scale( int coeff, expr e )
         }
         """,
-        {"sym": Sym},
+        {"sym": Sym}, slots=True
     )
 
 
@@ -106,6 +106,8 @@ def test_module_function_signatures(ueq_grammar):
 
     for (cls, expected_args) in test_cases:
         real_args = inspect.getfullargspec(cls.__init__)
+        print(cls)
+        print(real_args)
         assert real_args.args == expected_args
         assert real_args.varargs is None
         assert real_args.varkw is None

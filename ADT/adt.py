@@ -2,7 +2,7 @@
     Adopted from https://raw.githubusercontent.com/gilbo/atl/master/ATL/adt.py
     And again from https://github.com/ChezJrk/asdl/blob/master/src/asdl_adt/adt.py
 """
-
+import sys
 import asdl
 from types import ModuleType
 from typing import Callable, Any, Union, NamedTuple, Optional, Tuple, List, Dict, Set
@@ -235,8 +235,8 @@ def build_dc(env: ADTEnv,
                 sf = env.constructorData[tyname].minSatisfy[0]
                 singleType = sf.ty #list[sf.ty] if sf.seq else sf.ty
         else:
-            minArgs = int("infty")
-            maxArgs = int("infty")
+            minArgs = sys.maxsize
+            maxArgs = sys.maxsize
         convert = False
         if x is None and opt:
             return (False, None)

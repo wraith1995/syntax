@@ -18,6 +18,7 @@ def public_names():
         # The module will use the __dict__ property here by necessity, but all the
         # generated classes ought to use __slots__ for efficiency.
         fields = obj.__dict__ if isinstance(obj, ModuleType) else obj.__slots__
+        print("pbs=", fields, " for ", obj)
         return set(filter(lambda x: not x.startswith("_"), fields))
 
     return _public_names
