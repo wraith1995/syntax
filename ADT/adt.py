@@ -189,6 +189,7 @@ def build_dc(env: ADTEnv,
              mod: ModuleType,
              memoize=True,
              namespace_injector=None,
+             visitor=True,
              slots=True):
     classdict = WeakValueDictionary({})
 
@@ -197,10 +198,12 @@ def build_dc(env: ADTEnv,
         cls.__init__(obj, *args, **kwargs)
         # build the data class to check if it exists.
         # Hope this is gc'd quickly.
-        if obj in classdict:
+        if memoize and (obj in classdict):
             return classdict[(obj)]
-        else:
+        elif memoize:
             classdict[obj] = obj
+            return obj
+        else:
             return obj
 
     def element_checker(cname: str,
