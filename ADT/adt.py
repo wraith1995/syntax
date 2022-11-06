@@ -13,6 +13,7 @@ from dataclasses import make_dataclass, field, replace
 from copy import copy, deepcopy
 from abc import ABC, abstractmethod
 from itertools import chain
+from fastcore.all import typedispatch
 
 defaultsTy = Mapping[Union[str, type, Tuple[str, str], Tuple[str, type]], Any]
 
@@ -37,6 +38,14 @@ class _ProdBase(_AsdlAdtBase):
 class _SumBase(_AsdlAdtBase):
     pass
 
+class _AbstractAbstractVisitor(ABC):
+    @abstractmethod
+    def __getitem__(self, t: Tuple[type, type]) -> Callable:
+        pass
+
+class AbstractVisitor(_AbstractAbstractVisitor):
+    def __getitem__(self, t: Tuple[type, type]) -> Callable:
+        return typedispatch[t]
 
 def _asdl_parse(str):
     parser = asdl.ASDLParser()
@@ -189,7 +198,7 @@ def build_dc(env: ADTEnv,
              mod: ModuleType,
              memoize=True,
              namespace_injector=None,
-             visitor=True,
+             visitor: bool=True,
              slots=True):
     classdict = WeakValueDictionary({})
 
@@ -532,6 +541,31 @@ def build_dc(env: ADTEnv,
     namespace["__isomorphism__"] = __isomorphism__
     namespace["loop"] = __iter__
     namespace["map"] = map
+    if visitor:
+        def accept(self, visit: _AbstractAbstractVisitor):
+            visit[(type(visit), type(self))](visit, self) # Take self paramter and the larget object
+            for fd in fieldData:
+                test = False
+                try:
+                    test = isinstance(visit[type(visit), fd.ty], Callable)
+                except BaseException as _:
+                    continue
+                if not test:
+                    continue
+                nxt = getattr(self, fd.name)
+                if fd.opt:
+                    if nxt is None:
+                        continue
+                    else:
+                        nxt.accept(visit)
+                elif fd.seq:
+                    for item in nxt:
+                        item.accept(visit)
+                else:
+                    nxt.accept(visit)
+                
+            
+        namespace["accept"] = accept
 
     def fieldp(x):
         return field(default_factory=x) if isinstance(x, Callable) else field(default=x)
