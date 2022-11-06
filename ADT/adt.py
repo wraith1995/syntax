@@ -326,7 +326,7 @@ def build_dc(env: ADTEnv,
             return mapper
 
     def map(self, mapper: Union[Mapping, Callable],
-            unionSeq: bool = False): # FIXME: Mapping vs Callable.
+            unionSeq: bool = False):
         isCall = isinstance(mapper, Callable)
         if self in mapper:
             if isCall:
@@ -370,6 +370,22 @@ def build_dc(env: ADTEnv,
     # FIXME: We clearly need types of iterations for this.
     # Iterate over the internal definitions vs over the external definitions.
     # FIXME: I should not be using fields here I think? Use dataclasses's internals???
+
+    #Depth vs Bredth
+    #Self: first or last (pre order vs post order)
+    # Emit names?
+    # emit nones?
+    # Emit dups?
+    # order children?
+    # Filter children? (internal, external, ...)
+    #Flattening or no flattening?
+
+    #Questions are: order, emission, consideration
+    #What order?
+    #When do I look in something?
+    #When do I emit it?
+    
+    
 
 
     def mcopy(self, deep=False, copies={}, ignore=set(), onlyCopies=False,

@@ -14,7 +14,7 @@
 12. Attrs vs. Dataclasses. Attrs might save some boiler plate, but it outside standard python.
 13. Greater variation on internal errors and consistenty with python.
 14. psf black
-15. Ref Mutability and selective mutalability/frozeness
+15. Ref Mutability and selective mutalability/frozeness - ability to express cfg
 16. Integration with mypy/pyright/whwatever
 17. Function recursion helpers
-
+18. Folding/tree systems
