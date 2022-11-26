@@ -84,8 +84,10 @@ class field_data(NamedTuple):
     default: Any
 
 
-def fdtypestr(fd: field_data) -> str:
+def fdtypestr(fd: field_data, env) -> str:
     tyname = fd.ty.__name__
+    if env.isInterallyDefined(fd.ty):
+        tyname += "_type"
     if fd.seq:
         return "Sequence[{0}]".format(tyname)
     elif fd.opt:
@@ -94,8 +96,8 @@ def fdtypestr(fd: field_data) -> str:
         return tyname
 
 
-def fdinitstr(fd: field_data) -> str:
-    tystr = fdtypestr(fd)
+def fdinitstr(fd: field_data, env) -> str:
+    tystr = fdtypestr(fd, env)
     start = "{0}:{1}".format(fd.name, tystr)
     if fd.hasDefault:
         start += " = ..."
@@ -232,19 +234,36 @@ class ADTEnv:
     def generateClassStub(self, name: str) -> List[str]:
         data = []
         cdata = self.constructorData[name]
-        data.append("class {0}:".format(name))
+
+        if issubclass(cdata.sup, self.sumClass):
+            superName = cdata.sup.__name__
+        else:
+            superName = "object"
+        data.append("class {0}({1}):".format(name, superName))
         for fd in cdata.fields:
-            tystr = fdtypestr(fd)
+            tystr = fdtypestr(fd, self)
             data.append(indent + "{0}: {1}".format(fd.name, tystr))
-        inits = ["self"] + [fdinitstr(fd) for fd in cdata.fields]
-        initstr = ",".join(inits)
+        data.append(
+            indent
+            + "__match_args__ = ({0})".format(
+                ", ".join(['"' + fd.name + '"' for fd in cdata.fields])
+            )
+        )
+        inits = ["self"] + [fdinitstr(fd, self) for fd in cdata.fields]
+        initstr = ", ".join(inits)
         data.append(indent + "def __init__({0}) -> None: ...".format(initstr))
         return data
 
     def generateStub(self, oname: str) -> str:
-        stub_commands = ["from abc import ABCMeta", "from typing import Optional, Sequence"]
+        stub_commands = [
+            "from abc import ABCMeta",
+            "from typing import Optional, Sequence, Type, TypeAlias",
+            "from syntax import stamp",
+        ]
         for name in self.superTypes:
-            stub_commands.append("{0}_example: ABCMeta = {0}".format(name))
+            stub_commands.append("{0}_type: TypeAlias = {0}".format(name))
+            if issubclass(self.superTypes[name], self.sumClass):
+                stub_commands.append("class {0}(ABCMeta): ...".format(name))
         for (name, cd) in self.constructorData.items():
             stub_commands += self.generateClassStub(name)
         return "\n".join(stub_commands)
