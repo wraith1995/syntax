@@ -1,3 +1,4 @@
 adsl
 frozendict
 fastcore
+strongtyping
