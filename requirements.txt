@@ -2,3 +2,5 @@ adsl
 frozendict
 fastcore
 strongtyping
+maturin
+git+https://github.com/egraphs-good/snake-egg

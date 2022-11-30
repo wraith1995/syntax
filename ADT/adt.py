@@ -14,6 +14,7 @@ from copy import copy, deepcopy
 from abc import ABC, abstractmethod
 from itertools import chain
 from fastcore.all import typedispatch
+from snake_egg._internal import PyVar  # type: ignore
 import inspect
 
 
@@ -163,6 +164,7 @@ class ADTEnv:
         external_types: Mapping[str, type],
         defaults: defaultsTy,
         checks: Mapping[str, Callable],
+        egraphableTypes: Union[bool, Set[str]] = False,
     ):
         self.name = name
         self.checks = checks
@@ -173,6 +175,7 @@ class ADTEnv:
         self.externalTypes = external_types
         self.constructorDataPre: Dict[str, Tuple[List[str], type]] = dict()
         self.constructorData: dict[str, constructor_data] = dict()
+        self.egraphableTypes: Union[bool, Set[str]] = egraphableTypes
         self.old = adsl_adt
 
         def fieldValidator(flds, name, names=set()):
@@ -259,10 +262,11 @@ class ADTEnv:
             "from abc import ABCMeta",
             "from typing import Optional, Sequence, Type, TypeAlias",
             "from syntax import stamp",
+            "from snake_egg._internal import PyVar",
         ]
-        stub_commands.append("__all__ = ['{0}']".format(",".join(self.define_all())))
+        stub_commands.append("__all__ = ['{0}']\n".format(",".join(self.define_all())))
         for name in self.superTypes:
-            stub_commands.append("{0}_type: TypeAlias = {0}".format(name))
+            stub_commands.append("{0}_type: TypeAlias = {0}\n".format(name))
             if issubclass(self.superTypes[name], self.sumClass):
                 stub_commands.append("class {0}(ABCMeta): ...".format(name))
         for (name, cd) in self.constructorData.items():
@@ -280,6 +284,18 @@ class ADTEnv:
                 all_defs.add(t)
         return list(all_defs)
 
+    def useEgraph(self, ty: str) -> bool:
+        if isinstance(self.egraphableTypes, bool):
+            return self.egraphableTypes
+        else:
+            return ty in self.egraphableTypes
+
+    def anyEgraph(self) -> bool:
+        if isinstance(self.egraphableTypes, bool):
+            return self.egraphableTypes
+        else:
+            return len(self.egraphableTypes) > 0
+
 
 def build_dc(
     env: ADTEnv,
@@ -294,6 +310,14 @@ def build_dc(
     slots: bool = True,
 ):
     classdict = WeakValueDictionary({})
+
+    def egraphIsInstance(val, ty):
+        if isinstance(val, ty):
+            return True
+        else:
+            tyName = ty.__name__
+            if env.useEgraph(tyName):
+                return isinstance(val, PyVar) or isinstance(val, str)
 
     def __new__(cls, *args, **kwargs):
         obj = object.__new__(cls)
@@ -360,7 +384,7 @@ def build_dc(
         convert = False
         if x is None and opt:
             return (False, None)
-        if not isinstance(x, targetType):
+        if not egraphIsInstance(x, targetType):
             if not earlyAble:
                 raise badType
             else:
@@ -378,7 +402,7 @@ def build_dc(
                             convert = True
                         except BaseException:
                             raise badSeq
-                elif singleType is not None and isinstance(x, singleType):
+                elif singleType is not None and egraphIsInstance(x, singleType):
                     # CHECK: How does opt interact with this case?
                     # CHECK: How does this interact with seq case?
                     try:
@@ -641,6 +665,15 @@ def build_dc(
         else:
             return None
 
+    @property
+    def __match_args__(self):
+        vals = []
+
+        for fd in fieldData:
+            temp = getattr(self, fd.name)
+            vals.append(temp)
+        return tuple(*vals)
+
     namespace = {}
     if namespace_injector is not None:
         namespace = namespace_injector(cname, parent, fieldData, Err, parent)
@@ -659,6 +692,8 @@ def build_dc(
     namespace["__isomorphism__"] = __isomorphism__
     namespace["loop"] = __iter__
     namespace["map"] = map
+    if env.anyEgraph():
+        namespace["__match_args__"] = __match_args__
     if visitor:
 
         def accept(self, visit: _AbstractAbstractVisitor):
@@ -745,6 +780,7 @@ def ADT(
     slots: bool = False,
     visitor: bool = False,
     stubfile: Optional[str] = None,
+    egraphableTypes: Union[bool, Set[str]] = False,
 ) -> ModuleType:
     r"""ADT converts an ASDL grammar into a Python Module.
 
@@ -802,7 +838,12 @@ def ADT(
     assert isinstance(asdl_ast, asdl.Module)
 
     env = ADTEnv(
-        asdl_ast.name, asdl_ast, _builtin_types | ext_types, defaults, _builtin_checks | ext_checks
+        asdl_ast.name,
+        asdl_ast,
+        _builtin_types | ext_types,
+        defaults,
+        _builtin_checks | ext_checks,
+        egraphableTypes=egraphableTypes,
     )
     if memoize is True:
         memoize = set(env.constructorData.keys())
