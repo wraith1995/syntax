@@ -260,6 +260,7 @@ class ADTEnv:
             "from typing import Optional, Sequence, Type, TypeAlias",
             "from syntax import stamp",
         ]
+        stub_commands.append("__all__ = ['{0}']".format(",".join(self.define_all())))
         for name in self.superTypes:
             stub_commands.append("{0}_type: TypeAlias = {0}".format(name))
             if issubclass(self.superTypes[name], self.sumClass):
@@ -267,6 +268,17 @@ class ADTEnv:
         for (name, cd) in self.constructorData.items():
             stub_commands += self.generateClassStub(name)
         return "\n".join(stub_commands)
+
+    def define_all(self) -> List[str]:
+        """Lists all things exported by the created module."""
+        all_defs = set([])
+        for t in self.superTypes:
+            if t not in all_defs:
+                all_defs.add(t)
+        for t in self.constructorData:
+            if t not in all_defs:
+                all_defs.add(t)
+        return list(all_defs)
 
 
 def build_dc(
@@ -720,6 +732,7 @@ def _build_classes(
             visitor=visitor,
         )
         setattr(mod, name, dc)
+    setattr(mod, "__all__", env.define_all())
     return mod
 
 
