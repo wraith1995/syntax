@@ -506,7 +506,11 @@ def build_dc(
         # make sure nothing is None.
         nexts = chain(
             *[
-                getattr(self, fd.name) if not fd.seq else chain(*(getattr(self, fd.name)))
+                (
+                    getattr(self, fd.name).loop()
+                    if not fd.seq
+                    else chain(*([x.loop() for x in getattr(self, fd.name)]))
+                )
                 for fd in fieldData
                 if (not internal or env.isInterallyDefined(fd.ty))
                 and getattr(self, fd.name) is not None
