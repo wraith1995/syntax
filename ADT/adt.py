@@ -287,6 +287,10 @@ class ADTEnv:
         inits = ["self"] + [fdinitstr(fd, self) for fd in cdata.fields]
         initstr = ", ".join(inits)
         data.append(indent + "def __init__({0}) -> None: ...".format(initstr))
+        if len(cdata.fields) == 0:
+            data.append("\n")
+            data.append("{0}: {0} = {0}()".format(name))
+            data.append("\n")
         return data
 
     def generateStub(self, oname: str) -> str:
