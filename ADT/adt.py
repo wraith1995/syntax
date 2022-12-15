@@ -343,6 +343,7 @@ def build_dc(
     visitor: bool = True,
     slots: bool = True,
 ):
+    """Eh."""
     classdict: WeakValueDictionary = WeakValueDictionary({})
 
     def egraphIsInstance(val, ty):
@@ -774,6 +775,7 @@ def build_dc(
         else (fd.name, fd.ty, fieldp(fd.default))
         for fd in fieldData
     ]
+    isConstant = len(fields) == 0
     fields += extra
     try:
         cls = make_dataclass(
@@ -790,7 +792,11 @@ def build_dc(
                 cname, fields
             )
         )
-    return cls
+    if isConstant:
+        val = cls()
+        return val
+    else:
+        return cls
 
 
 def _build_classes(
