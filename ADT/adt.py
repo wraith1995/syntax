@@ -36,6 +36,29 @@ defaultsTy = Mapping[Union[str, type, Tuple[str, str], Tuple[str, type]], Any]
 indent = "    "
 
 
+class ADTOptions(NamedTuple):
+    """Configuration structure for ADTs."""
+
+    copyMethods: bool
+    visit: bool
+    mapper: bool
+    setfunctions: bool
+    shortcutInit: bool
+    loop: bool
+    other: dict
+
+
+defaultOpts = ADTOptions(
+    copyMethods=True,
+    visit=True,
+    mapper=True,
+    setfunctions=True,
+    shortcutInit=True,
+    loop=True,
+    other={},
+)
+
+
 class ADTCreationError(Exception):
     """Base exception for errors in creating an ADT."""
 
@@ -194,9 +217,11 @@ class ADTEnv:
         defaults: defaultsTy,
         checks: Mapping[str, Callable],
         egraphableTypes: Union[bool, Set[str]] = False,
+        options: ADTOptions = defaultOpts,
     ):
         """Create an enviroment for building ADTs."""
         self.name = name
+        self.options = options
         self.checks = checks
         self.defaults: defaultsTy = defaults  # (name, field), (name, type), type
         self.sumClass: type = type("sum_" + name, (_SumBase,), {})
@@ -469,22 +494,26 @@ def build_dc(
         namespace["__new__"] = __new__
     else:
         namespace["__post_init__"] = __post_init__
-    namespace["__copy__"] = mcopy
-    namespace["copy"] = mcopy
-    namespace["update"] = update
-    namespace["__deepcopy__"] = dcopy
+    if env.options.copyMethods:
+        namespace["__copy__"] = mcopy
+        namespace["copy"] = mcopy
+        namespace["update"] = update
+        namespace["__deepcopy__"] = dcopy
     # namespace["__contains__"] = __contains__
-    namespace["isdisjoint"] = isdisjoint
-    namespace["isomorphism"] = isomorphism
-    namespace["__isomorphism__"] = __isomorphism__
-    namespace["loop"] = __iter__
-    namespace["map"] = map
+    if env.options.setfunctions:
+        namespace["isdisjoint"] = isdisjoint
+        namespace["isomorphism"] = isomorphism
+        namespace["__isomorphism__"] = __isomorphism__
+    if env.options.loop:
+        namespace["loop"] = __iter__
+    if env.options.mapper:
+        namespace["map"] = map
     if isConstant:
         namespace["__call__"] = lambda self: self
     if env.anyEgraph():
         # namespace["__match_args__"] = __match_args__
         pass
-    if visitor:
+    if visitor or env.options.visit:
 
         accept = build_visitor_accept(fieldData)
 
@@ -921,6 +950,7 @@ def ADT(
     visitor: bool = False,
     stubfile: Optional[str] = None,
     egraphableTypes: Union[bool, Set[str]] = False,
+    options: ADTOptions = defaultOpts,
 ) -> ModuleType:
     r"""ADT converts an ASDL grammar into a Python Module.
 
@@ -984,6 +1014,7 @@ def ADT(
         defaults,
         _builtin_checks | ext_checks,
         egraphableTypes=egraphableTypes,
+        options=options,
     )
     if memoize is True:
         memoize = set(env.constructorData.keys())
