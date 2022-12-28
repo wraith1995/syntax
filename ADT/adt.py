@@ -1,6 +1,7 @@
-""" A module for parsing ASDL grammars into Python Class hierarchies
-    Adopted from https://raw.githubusercontent.com/gilbo/atl/master/ATL/adt.py
-    And again from https://github.com/ChezJrk/asdl/blob/master/src/asdl_adt/adt.py
+"""A module for parsing ASDL grammars into Python Class hierarchies.
+
+Adopted from https://raw.githubusercontent.com/gilbo/atl/master/ATL/adt.py
+And again from https://github.com/ChezJrk/asdl/blob/master/src/asdl_adt/adt.py.
 """
 import sys
 import asdl  # type: ignore
@@ -26,7 +27,7 @@ from abc import ABC, abstractmethod
 from itertools import chain
 from fastcore.all import typedispatch  # type: ignore
 from snake_egg._internal import PyVar  # type: ignore
-import inspect
+import inspect  # noqa: F401
 
 
 defaultsTy = Mapping[Union[str, type, Tuple[str, str], Tuple[str, type]], Any]
@@ -36,10 +37,14 @@ indent = "    "
 
 
 class ADTCreationError(Exception):
+    """Base exception for errors in creating an ADT."""
+
     pass
 
 
 class GenericADTError(Exception):
+    """Base exception for errors in using the ADT."""
+
     pass
 
 
@@ -64,7 +69,10 @@ class _AbstractAbstractVisitor(ABC):
 
 
 class AbstractVisitor(_AbstractAbstractVisitor):
+    """Abstract class for visitors."""
+
     def __getitem__(self, t: Tuple[type, type]) -> Callable:
+        """Get Vistor function."""
         return typedispatch[t]
 
 
@@ -87,6 +95,8 @@ _builtin_types = {
 
 
 class field_data(NamedTuple):
+    """Class for field of a class."""
+
     name: str
     seq: bool
     opt: bool
@@ -97,6 +107,7 @@ class field_data(NamedTuple):
 
 
 def fdtypestr(fd: field_data, env) -> str:
+    """Represent a field type as a string."""
     tyname = fd.ty.__name__
     if env.isInterallyDefined(fd.ty):
         tyname += "_type"
@@ -109,6 +120,7 @@ def fdtypestr(fd: field_data, env) -> str:
 
 
 def fdinitstr(fd: field_data, env) -> str:
+    """Represent type signature of an init."""
     tystr = fdtypestr(fd, env)
     start = "{0}:{1}".format(fd.name, tystr)
     if fd.hasDefault:
@@ -124,14 +136,13 @@ def build_field_cdata(
     checks: Mapping[str, Callable],
     defaults: defaultsTy,
 ) -> field_data:
+    """Transform enviroment info to field_data."""
     if str(f.type) in internalTypes:
         ty = internalTypes[str(f.type)]
     elif str(f.type) in externalTypes:
         ty = externalTypes[str(f.type)]
     else:
-        raise ADTCreationError(
-            "{1}: Type {0} not defined".format(f.type, f.name)
-        )
+        raise ADTCreationError("{1}: Type {0} not defined".format(f.type, f.name))
     default = None
     hasDefault = True
     if (outerName, f.name) in defaults:
@@ -162,6 +173,8 @@ def build_field_cdata(
 
 
 class constructor_data(NamedTuple):
+    """Represent a constructor."""
+
     sup: type
     fields: list[field_data]
     name: str
@@ -171,6 +184,8 @@ class constructor_data(NamedTuple):
 
 
 class ADTEnv:
+    """An enviroment for building ADTs."""
+
     def __init__(
         self,
         name: str,
@@ -180,11 +195,10 @@ class ADTEnv:
         checks: Mapping[str, Callable],
         egraphableTypes: Union[bool, Set[str]] = False,
     ):
+        """Create an enviroment for building ADTs."""
         self.name = name
         self.checks = checks
-        self.defaults: defaultsTy = (
-            defaults  # (name, field), (name, type), type
-        )
+        self.defaults: defaultsTy = defaults  # (name, field), (name, type), type
         self.sumClass: type = type("sum_" + name, (_SumBase,), {})
         self.prodClass: type = type("prod_" + name, (_ProdBase,), {})
         self.superTypes: Dict[str, type] = dict()
@@ -197,9 +211,7 @@ class ADTEnv:
         def fieldValidator(flds, name, names=set()):
             for fld in flds:
                 if fld.name in names:
-                    raise ADTCreationError(
-                        "In {0}, name conflict with {1}".format(name, fld.name)
-                    )
+                    raise ADTCreationError("In {0}, name conflict with {1}".format(name, fld.name))
                 else:
                     names.add(fld.name)
             return names
@@ -207,9 +219,7 @@ class ADTEnv:
         for name, ty in adsl_adt.types.items():
             if name in self.constructorData:
                 raise ADTCreationError(
-                    "{0} conflicts with another name already defined".format(
-                        name
-                    )
+                    "{0} conflicts with another name already defined".format(name)
                 )
             if isinstance(ty, asdl.Product):
                 typ = type(name, (self.prodClass,), {})
@@ -225,13 +235,9 @@ class ADTEnv:
                 for summand in ty.types:
                     if summand.name in self.constructorDataPre:
                         raise ADTCreationError(
-                            "{0} conflicts with another name already defined".format(
-                                summand.name
-                            )
+                            "{0} conflicts with another name already defined".format(summand.name)
                         )
-                    fieldValidator(
-                        summand.fields, summand.name, names=myattrs.copy()
-                    )
+                    fieldValidator(summand.fields, summand.name, names=myattrs.copy())
                     self.constructorDataPre[summand.name] = (
                         summand.fields + ty.attributes,
                         typ,
@@ -258,15 +264,19 @@ class ADTEnv:
             )
 
     def isInterallyDefined(self, typ: type):
+        """Determine if a type is internally defined."""
         return issubclass(typ, self.sumClass) or issubclass(typ, self.prodClass)
 
     def isInternalSum(self, typ: type):
+        """Determine if a type is an internally defined sum type."""
         return issubclass(typ, self.sumClass)
 
     def isInternalProduct(self, typ: type):
+        """Determine if a type is an internally defined product type."""
         return issubclass(typ, self.prodClass)
 
     def generateClassStub(self, name: str) -> List[str]:
+        """Generate stub file snippets for a class."""
         data = []
         cdata = self.constructorData[name]
         constantCheck = len(cdata.fields) == 0
@@ -275,17 +285,13 @@ class ADTEnv:
         else:
             superName = "object"
 
-        data.append(
-            "class {0}({1}):".format(
-                name if not constantCheck else "_" + name, superName
-            )
-        )
+        data.append("class {0}({1}):".format(name if not constantCheck else "_" + name, superName))
         for fd in cdata.fields:
             tystr = fdtypestr(fd, self)
             data.append(indent + "{0}: {1}".format(fd.name, tystr))
         data.append(
             indent
-            + "__match_args__ = ({0})".format(
+            + "__match_args__ = ({0})".format(  # noqa: W503
                 ", ".join(['"' + fd.name + '"' for fd in cdata.fields])
             )
         )
@@ -299,15 +305,14 @@ class ADTEnv:
         return data
 
     def generateStub(self, oname: str) -> str:
+        """Generate stub file for an ADT."""
         stub_commands = [
             "from abc import ABCMeta",
             "from typing import Optional, Sequence, Type, TypeAlias",
             "from syntax import stamp",
             "from snake_egg._internal import PyVar",
         ]
-        stub_commands.append(
-            "__all__ = ['{0}']\n".format(",".join(self.define_all()))
-        )
+        stub_commands.append("__all__ = ['{0}']\n".format(",".join(self.define_all())))
         for name in self.superTypes:
             stub_commands.append("{0}_type: TypeAlias = {0}\n".format(name))
             if issubclass(self.superTypes[name], self.sumClass):
@@ -317,7 +322,7 @@ class ADTEnv:
         return "\n".join(stub_commands)
 
     def define_all(self) -> List[str]:
-        """Lists all things exported by the created module."""
+        """List all things exported by the created module."""
         all_defs = set([])
         for t in self.superTypes:
             if t not in all_defs:
@@ -328,12 +333,14 @@ class ADTEnv:
         return list(all_defs)
 
     def useEgraph(self, ty: str) -> bool:
+        """Check if egraph types are allowed."""
         if isinstance(self.egraphableTypes, bool):
             return self.egraphableTypes
         else:
             return ty in self.egraphableTypes
 
     def anyEgraph(self) -> bool:
+        """Check if any egraph types are used."""
         if isinstance(self.egraphableTypes, bool):
             return self.egraphableTypes
         else:
@@ -352,7 +359,7 @@ def build_dc(
     visitor: bool = True,
     slots: bool = True,
 ):
-    """Eh."""
+    """Build a dataclass for an ADT type."""
     isConstant = len(fieldData) == 0
     classdict: WeakValueDictionary = WeakValueDictionary({})
 
@@ -509,9 +516,7 @@ def build_dc(
                 # is correct even with all of this frozen breaking
                 # nonsense in _post_init.
             else:
-                (convert, xp) = element_checker(
-                    cname, fieldName, ty, chk, opt, val
-                )
+                (convert, xp) = element_checker(cname, fieldName, ty, chk, opt, val)
                 if convert:
                     object.__setattr__(self, fieldName, xp)  # GOD I AM SORRY.
 
@@ -564,7 +569,7 @@ def build_dc(
                 )
                 for fd in fieldData
                 if (not internal or env.isInterallyDefined(fd.ty))
-                and getattr(self, fd.name) is not None
+                and getattr(self, fd.name) is not None  # noqa: W503
             ]
         )
         yield from nexts
@@ -778,13 +783,9 @@ def build_dc(
 
     bf = field(default=("___" + cname + "__"), init=False, repr=False)
     assert isinstance(bf, Field)
-    extra: List[Tuple[str, Type[Any], Field]] = [
-        ("___" + cname + "__", str, bf)
-    ]
+    extra: List[Tuple[str, Type[Any], Field]] = [("___" + cname + "__", str, bf)]
     fields: List[Union[Tuple[str, Type[Any], Field], Tuple[str, Type[Any]]]] = [
-        (fd.name, fd.ty)
-        if not fd.hasDefault
-        else (fd.name, fd.ty, fieldp(fd.default))
+        (fd.name, fd.ty) if not fd.hasDefault else (fd.name, fd.ty, fieldp(fd.default))
         for fd in fieldData
     ]
     fields += extra
@@ -799,9 +800,7 @@ def build_dc(
         )
     except BaseException:
         raise ADTCreationError(
-            "Failed to crate class for {0} with fields {1}".format(
-                cname, fields
-            )
+            "Failed to crate class for {0} with fields {1}".format(cname, fields)
         )
     if isConstant:
         val = cls()
@@ -924,19 +923,15 @@ def ADT(
     else:
         raise ADTCreationError("Memoization should be a set or Bool")
 
-    mod = _build_classes(
-        asdl_ast, env, memoize=memoize, slots=slots, visitor=visitor
-    )
+    mod = _build_classes(asdl_ast, env, memoize=memoize, slots=slots, visitor=visitor)
     # cache values in case we might want them
     setattr(mod, "_ast", asdl_ast)
     # mod._ast = asdl_ast
     setattr(mod, "_defstr", asdl_str)
     # mod._defstr = asdl_str
     setattr(mod, "_env", env)
-    mod.__doc__ = (
-        f"ASDL Module Generated by ADT\n\n"
-        f"Original ASDL description:\n{asdl_str}"
-    )
+    mod.__doc__ = f"""ASDL Module Generated by ADT\n\n"
+    f"Original ASDL description:\n{asdl_str}"""
     if stubfile is not None:
         with open(stubfile, "w+") as f:
             text = env.generateStub("")
