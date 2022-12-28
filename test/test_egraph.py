@@ -1,7 +1,7 @@
 from __future__ import annotations
-from adt import ADT
-from snake_egg import EGraph, Rewrite, Var, vars
-import pytest
+from adt import ADT  # type: ignore
+from snake_egg import EGraph, Rewrite, Var
+import pytest  # noqa: F401
 
 math = ADT(
     """ module MATH{
