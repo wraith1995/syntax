@@ -347,137 +347,46 @@ class ADTEnv:
             return len(self.egraphableTypes) > 0
 
 
-def build_dc(
-    env: ADTEnv,
-    cname: str,
-    parent: type,
-    fieldData: list[field_data],
-    Err: type,
-    mod: ModuleType,
-    memoize: bool = True,
-    namespace_injector=None,
-    visitor: bool = True,
-    slots: bool = True,
-):
-    """Build a dataclass for an ADT type."""
-    isConstant = len(fieldData) == 0
-    classdict: WeakValueDictionary = WeakValueDictionary({})
-
-    def egraphIsInstance(val, ty):
-        if isinstance(val, ty):
-            return True
-        else:
-            tyName = ty.__name__
-            if env.useEgraph(tyName):
-                return isinstance(val, PyVar) or isinstance(val, str)
-
-    def __new__(cls, *args, **kwargs):
-        obj = object.__new__(cls)
-        cls.__init__(obj, *args, **kwargs)
-        # build the data class to check if it exists.
-        # Hope this is gc'd quickly.
-        if memoize and (obj in classdict):
-            return classdict[(obj)]
-        elif memoize:
-            classdict[obj] = obj
-            return obj
-        else:
-            return obj
-
-    def element_checker(
-        cname: str,
-        fieldName: str,
-        targetType: type,
-        chk: Callable,
-        opt: bool,
-        x: Any,
-    ):
-        xt = type(x)
-        badType = Err(
-            """{0}.{1} does not have type
-        {2} because a value {3}
-        has type {4} and opt={5}""".format(
-                cname, fieldName, targetType, x, xt, opt
-            )
+def build_local_adt_errors(Err, x, cname, fieldName, targetType, opt):
+    """Build errors used in ADT creation."""
+    xt = type(x)
+    badType = Err(
+        """{0}.{1} does not have type
+    {2} because a value {3}
+    has type {4} and opt={5}""".format(
+            cname, fieldName, targetType, x, xt, opt
         )
-        badCheck = Err(
-            """{0}.{1} is not valid because
-        {2} failed the
-        check for type {3}""".format(
-                cname, fieldName, x, targetType
-            )
+    )
+    badCheck = Err(
+        """{0}.{1} is not valid because
+    {2} failed the
+    check for type {3}""".format(
+            cname, fieldName, x, targetType
         )
-        badSeq = Err(
-            """{0}.{1} does not have type {2},
-        and instead has type {3};
-        we tried to convert the value, {4}, because it was a
-        sequence or mapping,
-        but this failed.""".format(
-                cname, fieldName, targetType, xt, x
-            )
+    )
+    badSeq = Err(
+        """{0}.{1} does not have type {2},
+    and instead has type {3};
+    we tried to convert the value, {4}, because it was a
+    sequence or mapping,
+    but this failed.""".format(
+            cname, fieldName, targetType, xt, x
         )
-        badElem = Err(
-            """{0}.{1} does not have type {2},
-        and instead has type {3};
-        we tried to convert the value, {4}, because it was the single
-        correct type,
-        but this failed.""".format(
-                cname, fieldName, targetType, xt, x
-            )
+    )
+    badElem = Err(
+        """{0}.{1} does not have type {2},
+    and instead has type {3};
+    we tried to convert the value, {4}, because it was the single
+    correct type,
+    but this failed.""".format(
+            cname, fieldName, targetType, xt, x
         )
+    )
+    return badType, badSeq, badElem, badCheck
 
-        earlyAble = env.isInternalProduct(targetType)
-        tyname = targetType.__name__
-        singleType: Optional[type] = None
-        if earlyAble:
-            minArgs = env.constructorData[tyname].minArgs
-            maxArgs = env.constructorData[tyname].maxArgs
-            if minArgs == 1:
-                sf = env.constructorData[tyname].minSatisfy[0]
-                singleType = sf.ty  # list[sf.ty] if sf.seq else sf.ty
-        else:
-            minArgs = sys.maxsize
-            maxArgs = sys.maxsize
-        convert = False
-        if x is None and opt:
-            return (False, None)
-        if not egraphIsInstance(x, targetType):
-            if not earlyAble:
-                raise badType
-            else:
-                if isinstance(x, Sequence):
-                    if minArgs <= len(x) <= maxArgs:
-                        try:
-                            x = getattr(mod, tyname)(*x)
-                            convert = True
-                        except BaseException:
-                            raise badSeq
-                elif isinstance(x, Mapping):
-                    if minArgs <= len(x) <= maxArgs:
-                        try:
-                            x = getattr(mod, tyname)(**x)
-                            convert = True
-                        except BaseException:
-                            raise badSeq
-                elif singleType is not None and egraphIsInstance(x, singleType):
-                    # CHECK: How does opt interact with this case?
-                    # CHECK: How does this interact with seq case?
-                    try:
-                        x = getattr(mod, tyname)(x)
-                        convert = True
-                    except BaseException:
-                        raise badElem
-                elif x is None and opt:
-                    pass
-                else:
-                    raise badType
-        else:
-            pass
 
-        if not (x is None and opt) and not chk(x):
-            raise badCheck
-        else:
-            return (convert, x)
+def build_post_init(fieldData, Err, cname, element_checker):
+    """Build dataclass post init function."""
 
     def __post_init__(self):
         for fd in fieldData:
@@ -520,77 +429,197 @@ def build_dc(
                 if convert:
                     object.__setattr__(self, fieldName, xp)  # GOD I AM SORRY.
 
-    def toMapping(mapper: Union[Mapping, Callable]) -> Mapping:
-        if callable(mapper):
-            raise Err("Bad use of map with Callable!")
-        else:
-            return mapper
+    return __post_init__
 
-    def map(self, mapper: Union[Mapping, Callable], unionSeq: bool = False):
-        if not callable(mapper) and self in mapper:
-            if callable(mapper):
-                return mapper(self)
-            else:
-                return mapper[self]
-        rep = {}
+
+def build_dc(
+    env: ADTEnv,
+    cname: str,
+    parent: type,
+    fieldData: list[field_data],
+    Err: type,
+    mod: ModuleType,
+    memoize: bool = True,
+    namespace_injector=None,
+    visitor: bool = True,
+    slots: bool = True,
+):
+    """Build a dataclass for an ADT type."""
+    isConstant = len(fieldData) == 0
+    classdict: WeakValueDictionary = WeakValueDictionary({})
+
+    egraphIsInstance = build_egraph_instance_check(env)
+
+    __new__ = build_new(memoize, classdict)
+
+    element_checker = build_element_check(mod, egraphIsInstance, Err, env, cname)
+    __post_init__ = build_post_init(fieldData, Err, cname, element_checker)
+
+    __iter__, map = build_element_iteration_methods(Err, fieldData, env)
+
+    mcopy, update, dcopy = build_element_copy_methods(fieldData, env)
+
+    isdisjoint, isomorphism, __isomorphism__ = build_function_category_methods(fieldData, env, Err)
+
+    namespace = {}
+    if namespace_injector is not None:
+        namespace = namespace_injector(cname, parent, fieldData, Err, parent)
+    if memoize:
+        namespace["__post_init__"] = __post_init__
+        namespace["__new__"] = __new__
+    else:
+        namespace["__post_init__"] = __post_init__
+    namespace["__copy__"] = mcopy
+    namespace["copy"] = mcopy
+    namespace["update"] = update
+    namespace["__deepcopy__"] = dcopy
+    # namespace["__contains__"] = __contains__
+    namespace["isdisjoint"] = isdisjoint
+    namespace["isomorphism"] = isomorphism
+    namespace["__isomorphism__"] = __isomorphism__
+    namespace["loop"] = __iter__
+    namespace["map"] = map
+    if isConstant:
+        namespace["__call__"] = lambda self: self
+    if env.anyEgraph():
+        # namespace["__match_args__"] = __match_args__
+        pass
+    if visitor:
+
+        accept = build_visitor_accept(fieldData)
+
+        namespace["accept"] = accept
+
+    def fieldp(x) -> Field:
+        tmp = field(default_factory=x) if callable(x) else field(default=x)
+        assert isinstance(tmp, Field)
+        return tmp
+
+    bf = field(default=("___" + cname + "__"), init=False, repr=False)
+    assert isinstance(bf, Field)
+    extra: List[Tuple[str, Type[Any], Field]] = [("___" + cname + "__", str, bf)]
+    fields: List[Union[Tuple[str, Type[Any], Field], Tuple[str, Type[Any]]]] = [
+        (fd.name, fd.ty) if not fd.hasDefault else (fd.name, fd.ty, fieldp(fd.default))
+        for fd in fieldData
+    ]
+    fields += extra
+    try:
+        cls = make_dataclass(
+            cname,
+            fields,
+            bases=(parent,),
+            frozen=True,
+            slots=slots,
+            namespace=namespace,
+        )
+    except BaseException:
+        raise ADTCreationError(
+            "Failed to crate class for {0} with fields {1}".format(cname, fields)
+        )
+    if isConstant:
+        val = cls()
+        return val
+    else:
+        return cls
+
+
+def build_visitor_accept(fieldData):
+    """Build a simple visitor acceptor."""
+
+    def accept(self, visit: _AbstractAbstractVisitor):
+        visit[(type(visit), type(self))](visit, self)  # Take self paramter and the larget object
         for fd in fieldData:
-            test = env.isInterallyDefined(fd.ty)
-            temp = getattr(self, fd.name)
-            iters = []
-            if fd.seq:
-                if unionSeq and not callable(mapper) and temp in mapper:
-                    rep[fd.name] = mapper[temp]
+            test = False
+            try:
+                test = callable(visit[type(visit), fd.ty])
+            except BaseException:
+                continue
+            if not test:
+                continue
+            nxt = getattr(self, fd.name)
+            if fd.opt:
+                if nxt is None:
                     continue
                 else:
-                    iters = temp
-            reps = [
-                toMapping(mapper)[x]
-                if not callable(mapper) and x in mapper
-                else (x.map(mapper) if test else x)
-                for x in iters
-            ]
-            if not fd.seq:
-                rep[fd.name] = reps[0]
+                    nxt.accept(visit)
+            elif fd.seq:
+                for item in nxt:
+                    item.accept(visit)
             else:
-                rep[fd.name] = reps
-        return replace(self, **rep)
+                nxt.accept(visit)
 
-    def __iter__(self, internal: bool = True):
-        yield self
-        # go over fields that have interally defined types and iterate though
-        # if they are lists, iterate through them tooo
-        # make sure nothing is None.
-        nexts = chain(
-            *[
-                (
-                    getattr(self, fd.name).loop()
-                    if not fd.seq
-                    else chain(*([x.loop() for x in getattr(self, fd.name)]))
-                )
-                for fd in fieldData
-                if (not internal or env.isInterallyDefined(fd.ty))
-                and getattr(self, fd.name) is not None  # noqa: W503
-            ]
-        )
-        yield from nexts
+    return accept
 
-    # FIXME: We clearly need types of iterations for this.
-    # Iterate over the internal definitions vs over the external definitions.
-    # FIXME: I should not be using fields here I think?
 
-    # Depth vs Bredth
-    # Self: first or last (pre order vs post order)
-    # Emit names?
-    # emit nones?
-    # Emit dups?
-    # order children?
-    # Filter children? (internal, external, ...)
-    # Flattening or no flattening?
+def build_function_category_methods(fieldData, env, Err):
+    """Build methods to treat functions as functions as sets."""
 
-    # Questions are: order, emission, consideration
-    # What order?
-    # When do I look in something?
-    # When do I emit it?
+    def __contains__(self, other):
+        if self == other:
+            return True
+        else:
+            for fd in fieldData:
+                temp = getattr(self, str(fd.ty))
+                if env.isInterallyDefined(fd.ty):
+                    if temp.__contains__(other):
+                        return True
+                    else:
+                        pass
+            return False
+
+    def isdisjoint(self, other):
+        if self in other:
+            return False
+        else:
+            for fd in fieldData:
+                temp = getattr(self, fd.name)
+                if env.isInterallyDefined(fd.ty):
+                    if temp.isdisjoint(other):
+                        pass
+                    else:
+                        return False
+            return True
+
+    def __isomorphism__(x, y, defs, equiv):
+        if env.isInterallyDefined(type(x)) and env.isInterallyDefined(type(y)):
+            if x is y:
+                raise Err("Ismorpmism of non-disjoint objects")
+            elif type(x) != type(y):
+                return False
+            elif x in defs:
+                return defs[x] == y
+            else:
+                for fd in fieldData:
+                    temp1 = getattr(x, fd.name)
+                    temp2 = getattr(y, fd.name)
+                    if env.isInterallyDefined(fd.ty):
+                        fine = temp1.__isomorphism__(temp2, defs, equiv)
+                    else:
+                        fine = type(x) == type(y) and equiv(x, y)
+                    if not fine:
+                        return fine
+                    else:
+                        pass
+                defs[x] = y
+                return True
+        else:
+            return type(x) == type(y) and equiv(x, y)
+
+    def isomorphism(self, other, equiv=lambda _: True):
+        if not env.isInterallyDefined(type(other)):
+            raise Err("Isomorphism not defined on external types")
+
+        mapper = OrderedDict()
+        if self.__isomorphism__(other, mapper, equiv):
+            return mapper
+        else:
+            return None
+
+    return isdisjoint, isomorphism, __isomorphism__
+
+
+def build_element_copy_methods(fieldData, env):
+    """Build methods to copy elements."""
 
     def mcopy(
         self,
@@ -664,149 +693,191 @@ def build_dc(
     def dcopy(self):
         return mcopy(self, deep=True)
 
-    def __contains__(self, other):
-        if self == other:
-            return True
+    return mcopy, update, dcopy
+
+    # FIXME: We clearly need types of iterations for this.
+    # Iterate over the internal definitions vs over the external definitions.
+    # FIXME: I should not be using fields here I think?
+
+    # Depth vs Bredth
+    # Self: first or last (pre order vs post order)
+    # Emit names?
+    # emit nones?
+    # Emit dups?
+    # order children?
+    # Filter children? (internal, external, ...)
+    # Flattening or no flattening?
+
+    # Questions are: order, emission, consideration
+    # What order?
+    # When do I look in something?
+    # When do I emit it?
+
+    # Map, fold, filter, iter
+
+
+def build_element_iteration_methods(Err, fieldData, env):
+    """Add methods to iterate through elements."""
+
+    def toMapping(mapper: Union[Mapping, Callable]) -> Mapping:
+        if callable(mapper):
+            raise Err("Bad use of map with Callable!")
         else:
-            for fd in fieldData:
-                temp = getattr(self, str(fd.ty))
-                if env.isInterallyDefined(fd.ty):
-                    if temp.__contains__(other):
-                        return True
-                    else:
-                        pass
-            return False
-
-    def isdisjoint(self, other):
-        if self in other:
-            return False
-        else:
-            for fd in fieldData:
-                temp = getattr(self, fd.name)
-                if env.isInterallyDefined(fd.ty):
-                    if temp.isdisjoint(other):
-                        pass
-                    else:
-                        return False
-            return True
-
-    def __isomorphism__(x, y, defs, equiv):
-        if env.isInterallyDefined(type(x)) and env.isInterallyDefined(type(y)):
-            if x is y:
-                raise Err("Ismorpmism of non-disjoint objects")
-            elif type(x) != type(y):
-                return False
-            elif x in defs:
-                return defs[x] == y
-            else:
-                for fd in fieldData:
-                    temp1 = getattr(x, fd.name)
-                    temp2 = getattr(y, fd.name)
-                    if env.isInterallyDefined(fd.ty):
-                        fine = temp1.__isomorphism__(temp2, defs, equiv)
-                    else:
-                        fine = type(x) == type(y) and equiv(x, y)
-                    if not fine:
-                        return fine
-                    else:
-                        pass
-                defs[x] = y
-                return True
-        else:
-            return type(x) == type(y) and equiv(x, y)
-
-    def isomorphism(self, other, equiv=lambda _: True):
-        if not env.isInterallyDefined(type(other)):
-            raise Err("Isomorphism not defined on external types")
-
-        mapper = OrderedDict()
-        if self.__isomorphism__(other, mapper, equiv):
             return mapper
-        else:
-            return None
 
-    namespace = {}
-    if namespace_injector is not None:
-        namespace = namespace_injector(cname, parent, fieldData, Err, parent)
-    if memoize:
-        namespace["__post_init__"] = __post_init__
-        namespace["__new__"] = __new__
-    else:
-        namespace["__post_init__"] = __post_init__
-    namespace["__copy__"] = mcopy
-    namespace["copy"] = mcopy
-    namespace["update"] = update
-    namespace["__deepcopy__"] = dcopy
-    # namespace["__contains__"] = __contains__
-    namespace["isdisjoint"] = isdisjoint
-    namespace["isomorphism"] = isomorphism
-    namespace["__isomorphism__"] = __isomorphism__
-    namespace["loop"] = __iter__
-    namespace["map"] = map
-    if isConstant:
-        namespace["__call__"] = lambda self: self
-    if env.anyEgraph():
-        # namespace["__match_args__"] = __match_args__
-        pass
-    if visitor:
-
-        def accept(self, visit: _AbstractAbstractVisitor):
-            visit[(type(visit), type(self))](
-                visit, self
-            )  # Take self paramter and the larget object
-            for fd in fieldData:
-                test = False
-                try:
-                    test = callable(visit[type(visit), fd.ty])
-                except BaseException:
+    def map(self, mapper: Union[Mapping, Callable], unionSeq: bool = False):
+        if not callable(mapper) and self in mapper:
+            if callable(mapper):
+                return mapper(self)
+            else:
+                return mapper[self]
+        rep = {}
+        for fd in fieldData:
+            test = env.isInterallyDefined(fd.ty)
+            temp = getattr(self, fd.name)
+            iters = []
+            if fd.seq:
+                if unionSeq and not callable(mapper) and temp in mapper:
+                    rep[fd.name] = mapper[temp]
                     continue
-                if not test:
-                    continue
-                nxt = getattr(self, fd.name)
-                if fd.opt:
-                    if nxt is None:
-                        continue
-                    else:
-                        nxt.accept(visit)
-                elif fd.seq:
-                    for item in nxt:
-                        item.accept(visit)
                 else:
-                    nxt.accept(visit)
+                    iters = temp
+            reps = [
+                toMapping(mapper)[x]
+                if not callable(mapper) and x in mapper
+                else (x.map(mapper) if test else x)
+                for x in iters
+            ]
+            if not fd.seq:
+                rep[fd.name] = reps[0]
+            else:
+                rep[fd.name] = reps
+        return replace(self, **rep)
 
-        namespace["accept"] = accept
-
-    def fieldp(x) -> Field:
-        tmp = field(default_factory=x) if callable(x) else field(default=x)
-        assert isinstance(tmp, Field)
-        return tmp
-
-    bf = field(default=("___" + cname + "__"), init=False, repr=False)
-    assert isinstance(bf, Field)
-    extra: List[Tuple[str, Type[Any], Field]] = [("___" + cname + "__", str, bf)]
-    fields: List[Union[Tuple[str, Type[Any], Field], Tuple[str, Type[Any]]]] = [
-        (fd.name, fd.ty) if not fd.hasDefault else (fd.name, fd.ty, fieldp(fd.default))
-        for fd in fieldData
-    ]
-    fields += extra
-    try:
-        cls = make_dataclass(
-            cname,
-            fields,
-            bases=(parent,),
-            frozen=True,
-            slots=slots,
-            namespace=namespace,
+    def __iter__(self, internal: bool = True):
+        yield self
+        # go over fields that have interally defined types and iterate though
+        # if they are lists, iterate through them tooo
+        # make sure nothing is None.
+        nexts = chain(
+            *[
+                (
+                    getattr(self, fd.name).loop()
+                    if not fd.seq
+                    else chain(*([x.loop() for x in getattr(self, fd.name)]))
+                )
+                for fd in fieldData
+                if (not internal or env.isInterallyDefined(fd.ty))
+                and getattr(self, fd.name) is not None  # noqa: W503
+            ]
         )
-    except BaseException:
-        raise ADTCreationError(
-            "Failed to crate class for {0} with fields {1}".format(cname, fields)
+        yield from nexts
+
+    return __iter__, map
+
+
+def build_element_check(mod, egraphIsInstance, Err, env, cname):
+    """Add method to check arguments and convert as needed."""
+
+    def element_checker(
+        cname: str,
+        fieldName: str,
+        targetType: type,
+        chk: Callable,
+        opt: bool,
+        x: Any,
+    ):
+        badType, badSeq, badElem, badCheck = build_local_adt_errors(
+            Err, x, cname, fieldName, targetType, opt
         )
-    if isConstant:
-        val = cls()
-        return val
-    else:
-        return cls
+
+        earlyAble = env.isInternalProduct(targetType)
+        tyname = targetType.__name__
+        singleType: Optional[type] = None
+        if earlyAble:
+            minArgs = env.constructorData[tyname].minArgs
+            maxArgs = env.constructorData[tyname].maxArgs
+            if minArgs == 1:
+                sf = env.constructorData[tyname].minSatisfy[0]
+                singleType = sf.ty  # list[sf.ty] if sf.seq else sf.ty
+        else:
+            minArgs = sys.maxsize
+            maxArgs = sys.maxsize
+        convert = False
+        if x is None and opt:
+            return (False, None)
+        if not egraphIsInstance(x, targetType):
+            if not earlyAble:
+                raise badType
+            else:
+                if isinstance(x, Sequence):
+                    if minArgs <= len(x) <= maxArgs:
+                        try:
+                            x = getattr(mod, tyname)(*x)
+                            convert = True
+                        except BaseException:
+                            raise badSeq
+                elif isinstance(x, Mapping):
+                    if minArgs <= len(x) <= maxArgs:
+                        try:
+                            x = getattr(mod, tyname)(**x)
+                            convert = True
+                        except BaseException:
+                            raise badSeq
+                elif singleType is not None and egraphIsInstance(x, singleType):
+                    # CHECK: How does opt interact with this case?
+                    # CHECK: How does this interact with seq case?
+                    try:
+                        x = getattr(mod, tyname)(x)
+                        convert = True
+                    except BaseException:
+                        raise badElem
+                elif x is None and opt:
+                    pass
+                else:
+                    raise badType
+        else:
+            pass
+
+        if not (x is None and opt) and not chk(x):
+            raise badCheck
+        else:
+            return (convert, x)
+
+    return element_checker
+
+
+def build_egraph_instance_check(env):
+    """Add methods to manage use of egraphs."""
+
+    def egraphIsInstance(val, ty):
+        if isinstance(val, ty):
+            return True
+        else:
+            tyName = ty.__name__
+            if env.useEgraph(tyName):
+                return isinstance(val, PyVar) or isinstance(val, str)
+
+    return egraphIsInstance
+
+
+def build_new(memoize, classdict):
+    """Make a new function for an ADT Entry."""
+
+    def __new__(cls, *args, **kwargs):
+        obj = object.__new__(cls)
+        cls.__init__(obj, *args, **kwargs)
+        # build the data class to check if it exists.
+        # Hope this is gc'd quickly.
+        if memoize and (obj in classdict):
+            return classdict[(obj)]
+        elif memoize:
+            classdict[obj] = obj
+            return obj
+        else:
+            return obj
+
+    return __new__
 
 
 def _build_classes(
