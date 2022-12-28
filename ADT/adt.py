@@ -269,12 +269,17 @@ class ADTEnv:
     def generateClassStub(self, name: str) -> List[str]:
         data = []
         cdata = self.constructorData[name]
-
+        constantCheck = len(cdata.fields) == 0
         if issubclass(cdata.sup, self.sumClass):
             superName = cdata.sup.__name__
         else:
             superName = "object"
-        data.append("class {0}({1}):".format(name, superName))
+
+        data.append(
+            "class {0}({1}):".format(
+                name if not constantCheck else "_" + name, superName
+            )
+        )
         for fd in cdata.fields:
             tystr = fdtypestr(fd, self)
             data.append(indent + "{0}: {1}".format(fd.name, tystr))
@@ -289,7 +294,7 @@ class ADTEnv:
         data.append(indent + "def __init__({0}) -> None: ...".format(initstr))
         if len(cdata.fields) == 0:
             data.append("\n")
-            data.append("{0}: {0} = {0}()".format(name))
+            data.append("{0}: _{0} = _{0}()".format(name))
             data.append("\n")
         return data
 
@@ -348,6 +353,7 @@ def build_dc(
     slots: bool = True,
 ):
     """Eh."""
+    isConstant = len(fieldData) == 0
     classdict: WeakValueDictionary = WeakValueDictionary({})
 
     def egraphIsInstance(val, ty):
@@ -732,6 +738,8 @@ def build_dc(
     namespace["__isomorphism__"] = __isomorphism__
     namespace["loop"] = __iter__
     namespace["map"] = map
+    if isConstant:
+        namespace["__call__"] = lambda self: self
     if env.anyEgraph():
         # namespace["__match_args__"] = __match_args__
         pass
@@ -779,7 +787,6 @@ def build_dc(
         else (fd.name, fd.ty, fieldp(fd.default))
         for fd in fieldData
     ]
-    isConstant = len(fields) == 0
     fields += extra
     try:
         cls = make_dataclass(
