@@ -160,9 +160,9 @@ def fdtypestr(fd: field_data, env) -> str:
     if env.isInterallyDefined(fd.ty):
         tyname += "_type"
     if fd.seq:
-        return "Sequence[{0}]".format(tyname)
+        return "typing.Sequence[{0}]".format(tyname)
     elif fd.opt:
-        return "Optional[{0}]".format(tyname)
+        return "typing.Optional[{0}]".format(tyname)
     else:
         return tyname
 
@@ -317,6 +317,7 @@ class ADTEnv:
             self.constructorData[name] = constructor_data(
                 ty, fieldData, name, maxArgs, minArgs, minSet
             )
+        self.allTypeNames = set().union(*[set(v) for v in self.typeCollections.values()])
 
     def isInterallyDefined(self, typ: type):
         """Determine if a type is internally defined."""
@@ -336,7 +337,7 @@ class ADTEnv:
         cdata = self.constructorData[name]
         constantCheck = len(cdata.fields) == 0
         if issubclass(cdata.sup, self.sumClass):
-            superName = cdata.sup.__name__
+            superName = "_" + cdata.sup.__name__
         else:
             superName = "object"
 
@@ -362,16 +363,25 @@ class ADTEnv:
     def generateStub(self, oname: str) -> str:
         """Generate stub file for an ADT."""
         stub_commands = [
-            "from abc import ABCMeta",
-            "from typing import Optional, Sequence, Type, TypeAlias",
+            "import abc",
+            "import typing",
             "from syntax import stamp",
             "from snake_egg._internal import PyVar",
         ]
         stub_commands.append("__all__ = ['{0}']\n".format(",".join(self.define_all())))
         for name in self.superTypes:
-            stub_commands.append("{0}_type: TypeAlias = {0}\n".format(name))
+            # stub_commands.append("{0}_type: typing.TypeAlias = {0}\n".format(name))
             if issubclass(self.superTypes[name], self.sumClass):
-                stub_commands.append("class {0}(ABCMeta): ...".format(name))
+                names = ", ".join(self.typeCollections[name])
+                stub_commands.append(
+                    "{1}_type: typing.TypeAlias = typing.Union[{0}]\n".format(names, name)
+                )
+                stub_commands.append(
+                    "{1}: typing.TypeAlias = typing.Union[{0}]\n".format(names, name)
+                )
+                stub_commands.append("class _{0}(abc.ABCMeta): ...".format(name))
+            else:
+                stub_commands.append("{0}_type: typing.TypeAlias = {0}\n".format(name))
         for (name, cd) in self.constructorData.items():
             stub_commands += self.generateClassStub(name)
         return "\n".join(stub_commands)
@@ -951,7 +961,7 @@ def _build_classes(
     Err: type = type(asdl_mod.name + "Error", (Exception,), {})
     setattr(mod, "__err__", Err)
     for (name, ty) in env.superTypes.items():
-        setattr(mod, name, ty)
+        setattr(mod, "_" + name, ty)
     for (name, data) in env.constructorData.items():
         dc = build_dc(
             env,
@@ -966,6 +976,12 @@ def _build_classes(
             visitor=visitor,
         )
         setattr(mod, name, dc)
+    for (name, tys) in env.typeCollections.items():
+        tysList: List[Type] = [getattr(mod, name) for name in tys]
+        setattr(mod, name, Union[tuple(tysList)])
+    allTypeNames = env.allTypeNames
+    allTypes = tuple([getattr(mod, name) for name in allTypeNames])
+    setattr(mod, "_Any", Union[allTypes])
     setattr(mod, "__all__", env.define_all())
     return mod
 
