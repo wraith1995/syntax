@@ -27,6 +27,7 @@ from abc import ABC, abstractmethod
 from itertools import chain
 from fastcore.all import typedispatch  # type: ignore
 from snake_egg._internal import PyVar  # type: ignore
+import pprint
 import inspect  # noqa: F401
 
 
@@ -46,6 +47,7 @@ class ADTOptions(NamedTuple):
     shortcutInit: bool
     loop: bool
     other: dict
+    pprint: bool
 
 
 defaultOpts = ADTOptions(
@@ -124,7 +126,7 @@ class field_data(NamedTuple):
     seq: bool
     opt: bool
     ty: type
-    chk: Callable
+    chk: Callablez
     hasDefault: bool
     default: Any
 
@@ -204,6 +206,32 @@ class constructor_data(NamedTuple):
     minArgs: int
     maxArgs: int
     minSatisfy: list[field_data]
+
+
+class PrecdenceData(NamedTuple):
+    """A Data structure to manage Precdence info."""
+
+    isExprData: Union[Callable[[str], bool], Set[str]]
+    exprToPrecData: Mapping[str, Union[Callable[[str, str], bool], Mapping[str, int]]]
+
+    def isExpr(self, ty: str) -> bool:
+        """Determine if a ty is an expression."""
+        if callable(self.isExprData):
+            return self.isExprData(ty)
+        else:
+            return ty in self.isExprData
+
+    def exprPrec(self, ty: str, lhs: str, rhs: str) -> bool:
+        """Determine if parens need to be added if  lhs <expr> rhs <expr>."""
+        assert self.isExpr(ty)
+        assert ty in self.exprToPrecData
+        option = self.exprToPrecData[ty]
+        if callable(option):
+            return option(lhs, rhs)
+        else:
+            lhsS = option[lhs]
+            rhsS = option[rhs]
+            return lhsS <= rhsS
 
 
 class ADTEnv:
@@ -550,6 +578,10 @@ def build_dc(
         return val
     else:
         return cls
+
+
+# def build_module_pretty_print(env: ADTEnv) -> pprint.PrettyPrinter:
+#     class
 
 
 def build_visitor_accept(fieldData):

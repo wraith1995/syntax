@@ -18,3 +18,29 @@
 16. Integration with mypy/pyright/whwatever
 17. Function recursion helpers
 18. Folding/tree systems
+
+
+Pretty printing:
+Dynamic Choices:
+Custom context
+Printer control at module level? Sure why not.No
+Format string or function or mine or DC or __dict__
+Format emission
+Expression selection/ inlining 
+
+
+
+Override pretty printer dispatch
+Depth
+Show stamps
+Customize type printing/blocking
+Customize inlining not inline
+
+
+Logging:
+
+
+Exploders: add isthis and grabThis and getThis.
+
+Stub files: Add env stuff for stub files.
+Stub files: Add union type to exhasutienss
