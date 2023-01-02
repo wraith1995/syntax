@@ -384,10 +384,14 @@ class ADTEnv:
                 stub_commands.append("{0}_type: typing.TypeAlias = {0}\n".format(name))
         for (name, cd) in self.constructorData.items():
             stub_commands += self.generateClassStub(name)
+        stub_commands.append(
+            "_Any: typing.TypeAlias = Union[{0}]".format(", ".join(self.allTypeNames))
+        )
         return "\n".join(stub_commands)
 
     def define_all(self) -> List[str]:
         """List all things exported by the created module."""
+        # FIXME: Somehow do this automatically?
         all_defs = set([])
         for t in self.superTypes:
             if t not in all_defs:
@@ -395,6 +399,7 @@ class ADTEnv:
         for t in self.constructorData:
             if t not in all_defs:
                 all_defs.add(t)
+        all_defs.add("_Any")
         return list(all_defs)
 
     def useEgraph(self, ty: str) -> bool:
