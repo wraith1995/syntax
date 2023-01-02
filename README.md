@@ -21,26 +21,6 @@
 
 
 Pretty printing:
-Dynamic Choices:
-Custom context
-Printer control at module level? Sure why not.No
-Format string or function or mine or DC or __dict__
-Format emission
-Expression selection/ inlining 
+Expr, stmt, graph
 
-
-
-Override pretty printer dispatch
-Depth
-Show stamps
-Customize type printing/blocking
-Customize inlining not inline
-
-
-Logging:
-
-
-Exploders: add isthis and grabThis and getThis.
-
-Stub files: Add env stuff for stub files.
-Stub files: Add union type to exhasutienss
+Preable (subst)

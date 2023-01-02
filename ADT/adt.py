@@ -27,7 +27,7 @@ from abc import ABC, abstractmethod
 from itertools import chain
 from fastcore.all import typedispatch  # type: ignore
 from snake_egg._internal import PyVar  # type: ignore
-import pprint
+
 import inspect  # noqa: F401
 
 
@@ -35,6 +35,28 @@ defaultsTy = Mapping[Union[str, type, Tuple[str, str], Tuple[str, type]], Any]
 
 
 indent = "    "
+
+
+# class PrecdenceData(NamedTuple):
+#     """A Data structure to manage Precdence info."""
+
+#     isExprData: Set[str]
+#     exprToPrecData: Optional[Mapping[str,  Mapping[str, int]]]
+
+#     def isExpr(self, ty: str) -> bool:
+#         """Determine if a ty is an expression."""
+#         return ty in self.isExprData
+
+#     def exprPrec(self, ty: str, lhs: str, rhs: str) -> bool:
+#         """Determine if parens need to be added if  lhs <expr> rhs <expr>."""
+#         if isinstance(self.exprToPrecData, NoneType):
+#             return True
+#         assert self.isExpr(ty)
+#         assert ty in self.exprToPrecData
+#         option = self.exprToPrecData[ty]
+#         lhsS = option[lhs]
+#         rhsS = option[rhs]
+#         return lhsS <= rhsS
 
 
 class ADTOptions(NamedTuple):
@@ -58,6 +80,7 @@ defaultOpts = ADTOptions(
     shortcutInit=True,
     loop=True,
     other={},
+    pprint=True,
 )
 
 
@@ -126,7 +149,7 @@ class field_data(NamedTuple):
     seq: bool
     opt: bool
     ty: type
-    chk: Callablez
+    chk: Callable
     hasDefault: bool
     default: Any
 
@@ -208,32 +231,6 @@ class constructor_data(NamedTuple):
     minSatisfy: list[field_data]
 
 
-class PrecdenceData(NamedTuple):
-    """A Data structure to manage Precdence info."""
-
-    isExprData: Union[Callable[[str], bool], Set[str]]
-    exprToPrecData: Mapping[str, Union[Callable[[str, str], bool], Mapping[str, int]]]
-
-    def isExpr(self, ty: str) -> bool:
-        """Determine if a ty is an expression."""
-        if callable(self.isExprData):
-            return self.isExprData(ty)
-        else:
-            return ty in self.isExprData
-
-    def exprPrec(self, ty: str, lhs: str, rhs: str) -> bool:
-        """Determine if parens need to be added if  lhs <expr> rhs <expr>."""
-        assert self.isExpr(ty)
-        assert ty in self.exprToPrecData
-        option = self.exprToPrecData[ty]
-        if callable(option):
-            return option(lhs, rhs)
-        else:
-            lhsS = option[lhs]
-            rhsS = option[rhs]
-            return lhsS <= rhsS
-
-
 class ADTEnv:
     """An enviroment for building ADTs."""
 
@@ -260,6 +257,7 @@ class ADTEnv:
         self.constructorData: dict[str, constructor_data] = dict()
         self.egraphableTypes: Union[bool, Set[str]] = egraphableTypes
         self.old = adsl_adt
+        self.typeCollections: Dict[str, List[str]] = dict()
 
         def fieldValidator(flds, name, names=set()):
             for fld in flds:
@@ -280,11 +278,13 @@ class ADTEnv:
                 myattrs: Set[str] = set()
                 fieldValidator(ty.fields, name, names=myattrs)
                 self.constructorDataPre[name] = (ty.fields, typ)
+                self.typeCollections[name] = [name]
             elif isinstance(ty, asdl.Sum):
                 typ = type(name, (self.sumClass,), {})
                 self.superTypes[name] = typ
                 myattrs = set()
                 fieldValidator(ty.attributes, name, names=myattrs)
+                self.typeCollections[name] = []
                 for summand in ty.types:
                     if summand.name in self.constructorDataPre:
                         raise ADTCreationError(
@@ -295,6 +295,8 @@ class ADTEnv:
                         summand.fields + ty.attributes,
                         typ,
                     )
+                    self.typeCollections[name].append(summand.name)
+
             else:
                 raise ADTCreationError("ASDL item not sum nor product.")
         for (name, (fields, ty)) in self.constructorDataPre.copy().items():
@@ -578,10 +580,6 @@ def build_dc(
         return val
     else:
         return cls
-
-
-# def build_module_pretty_print(env: ADTEnv) -> pprint.PrettyPrinter:
-#     class
 
 
 def build_visitor_accept(fieldData):
