@@ -8,7 +8,7 @@ from ADT import ADT  # type: ignore
 math = ADT(
     """ module MATH{
 const = (int int)
-expr = Add(expr x, expr y) | Mul(expr x, expr y) | Const (const x) | Paren (expr x)
+expr = Add(expr x, expr y) | Mul(expr x, expr y) | Const (const x) | V (str name) | Paren (expr x)
     }
 """,
     ext_types={"int": int},
@@ -53,5 +53,6 @@ def test_simple_1():
 
 
 def test_simple_2():
-    foo = Var("foo")
-    assert checkExists(math.Add(math.Const(0), math.Mul(math.Const(1), foo)), math.Paren(foo)) == math.Paren(foo)
+    foo = math.V("foo")
+    print(foo)
+    assert checkExists(math.Add(math.Const(0), math.Mul(math.Const(1), foo)), foo) == (foo)

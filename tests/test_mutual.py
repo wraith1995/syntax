@@ -5,7 +5,7 @@ from ADT import ADT
 
 def test_sum_mutual():
     try:
-        return ADT(
+        ADT(
             """
         module Test {
         test1 = A (test2 t) | B (test1 tt) | C (int ttt)
@@ -13,13 +13,14 @@ def test_sum_mutual():
         }
         """
         )
+        return None
     except Exception as exc:
         assert False, str(exc)
 
 
 def test_prod_mutual():
     try:
-        return ADT(
+        ADT(
             """
         module Test {
         test1 = (int a, test2 b)
@@ -27,13 +28,14 @@ def test_prod_mutual():
         }
         """
         )
+        return None
     except Exception as exc:
         assert False, str(exc)
 
 
 def test_mixed_mutual():
     try:
-        return ADT(
+        ADT(
             """
         module Test {
         test1 = (int a, test2 b)
@@ -41,5 +43,6 @@ def test_mixed_mutual():
         }
         """
         )
+        return None
     except Exception as exc:
         assert False, str(exc)
