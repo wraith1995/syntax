@@ -1,10 +1,10 @@
 [tool.poetry]
-name = "ADT"
+name = "syntax"
 version = "0.0.3"
 description = "A package for writing ADTs in a pythonic way, mainly aimed at making IRs, DSLs, Compilers, etc."
-authors = ["Teodoro Collin <fteoc@mit.edu>"]
-repository = "https://github.com/wraith1995/syn"
-documentation = "https://wraith1995.github.io/syn/"
+authors = ["Teodoro Collin <teoc@mit.edu>"]
+repository = "https://github.com/wraith1995/syntax"
+documentation = "https://wraith1995.github.io/syntax/"
 readme = "README.md"
 packages = [
   {include = "ADT"}
