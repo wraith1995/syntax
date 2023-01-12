@@ -9,9 +9,10 @@ from typing import Type, List, Literal
 
 import pytest
 
-import adt
+import ADT as adt
 
-def test_object_is_not_none():
+
+def test_object_is_not_none() -> None:
     """
     Test that "object"-typed fields may not be none
     """
@@ -22,13 +23,16 @@ def test_object_is_not_none():
 
     with pytest.raises(test_adt.__err__):
         test_adt.foo(None)
-def test_optional_may_be_none():
+
+
+def test_optional_may_be_none() -> None:
     """
     Test that _optional_ "object"-typed fields _may_ be none
     """
     test_adt = adt.ADT("module test_optional_may_be_none { foo = ( object? x ) }")
     assert isinstance(test_adt.foo(None), test_adt.foo)
     assert test_adt.foo(None).x is None
+
 
 # FIXME: This seems like an insane idea given how types currently work in python
 # def test_subclass_validator():
@@ -55,4 +59,4 @@ def test_optional_may_be_none():
 #         test_adt.foo(Parent())
 
 #     # assert exc_info.value.expected == Type[Parent]
-#     # assert exc_info.value.actual == Parent    
+#     # assert exc_info.value.actual == Parent

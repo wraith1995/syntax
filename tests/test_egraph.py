@@ -1,5 +1,5 @@
 from __future__ import annotations
-from adt import ADT  # type: ignore
+from ADT import ADT  # type: ignore
 from snake_egg import EGraph, Rewrite, Var
 import pytest  # noqa: F401
 

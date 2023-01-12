@@ -8,7 +8,7 @@ from typing import List
 
 import pytest
 
-from adt import ADT
+from ADT import ADT
 
 
 @dataclass(frozen=True)
@@ -45,7 +45,8 @@ def fixture_ueq_grammar():
                  | Scale( int coeff, expr e )
         }
         """,
-        {"sym": Sym}, slots=True
+        {"sym": Sym},
+        slots=True,
     )
 
 
@@ -104,7 +105,7 @@ def test_module_function_signatures(ueq_grammar):
         (ueq_grammar.Scale, ["self", "coeff", "e"]),
     ]
 
-    for (cls, expected_args) in test_cases:
+    for cls, expected_args in test_cases:
         real_args = inspect.getfullargspec(cls.__init__)
         print(cls)
         print(real_args)
@@ -155,9 +156,9 @@ def test_create_problem(ueq_grammar, public_names):
     assert isinstance(problem, ueq_grammar.problem)
     assert problem.holes == tuple([Sym("x")])
     assert problem.knowns == tuple([Sym("y")])
-    assert problem.preds == tuple([
-        ueq_grammar.Eq(ueq_grammar.Var(Sym("x")), ueq_grammar.Var(Sym("y")))
-    ])
+    assert problem.preds == tuple(
+        [ueq_grammar.Eq(ueq_grammar.Var(Sym("x")), ueq_grammar.Var(Sym("y")))]
+    )
     assert public_names(problem) == {"holes", "knowns", "preds"}
 
 
