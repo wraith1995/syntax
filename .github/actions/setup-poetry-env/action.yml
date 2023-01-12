@@ -16,6 +16,8 @@ runs:
         python-version: ${{ inputs.python-version }}
     - name: Setup Rust
       uses: ATiltedTree/setup-rust@v1.0.5
+      with:
+         rust-version: 1.66.1
 
 
     - name: Install Poetry
