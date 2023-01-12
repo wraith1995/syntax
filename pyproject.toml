@@ -1,32 +1,64 @@
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
-
-[project]
+[tool.poetry]
 name = "ADT"
-version = "0.0.2"
-authors = [
-  { name="Teodoro F. Collin", email="teoc@mit.edu" },
-]
-description = "A package for writing ADTs in a pythonic way, mainly aimed at making IRs, DSLs, Compilers,etc"
+version = "0.0.3"
+description = "A package for writing ADTs in a pythonic way, mainly aimed at making IRs, DSLs, Compilers, etc."
+authors = ["Teodoro Collin <fteoc@mit.edu>"]
+repository = "https://github.com/wraith1995/syn"
+documentation = "https://wraith1995.github.io/syn/"
 readme = "README.md"
-license = { file="LICENSE" }
-requires-python = ">=3.10"
-classifiers = [
-    "Programming Language :: Python :: 3",
-    "License :: OSI Approved :: MIT License",
-    "Operating System :: OS Independent",
+packages = [
+  {include = "ADT"}
 ]
-dynamic = ["dependencies"]
-[tool.setuptools.dynamic]
-dependencies = {file = ["requirements.txt"]}
 
-[project.urls]
-"Homepage" = "https://github.com/wraith1995/syntax"
-"Bug Tracker" = "https://github.com/wraith1995/syntax/issues"
+[tool.poetry.dependencies]
+python = ">=3.10,<4.0"
+snake-egg = {git = "https://github.com/egraphs-good/snake-egg"}
+maturin = "^0.14.9"
+fastcore = "^1.5.27"
+frozendict = "^2.3.4"
+strongtyping = "^3.10.5"
+asdl = "^0.1.5"
 
-[tool.flake8]
-ignore = ['E731', 'E722']
+[tool.poetry.group.dev.dependencies]
+pytest = "^7.2.0"
+pytest-cov = "^4.0.0"
+deptry = "^0.6.4"
+mypy = "^0.981"
+pre-commit = "^2.20.0"
+tox = "^3.25.1"
 
-[flake8]
-ignore = ['E731', 'E722']
+[tool.poetry.group.docs.dependencies]
+mkdocs = "^1.4.2"
+mkdocs-material = "^8.5.10"
+mkdocstrings = {extras = ["python"], version = "^0.19.0"}
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.black]
+line-length = 120
+target-version = ['py37']
+preview = true
+
+[tool.isort]
+profile = "black"
+
+[tool.mypy]
+files = ["ADT"]
+disallow_untyped_defs = "True"
+disallow_any_unimported = "True"
+no_implicit_optional = "True"
+check_untyped_defs = "True"
+warn_return_any = "True"
+warn_unused_ignores = "True"
+show_error_codes = "True"
+
+[tool.coverage.report]
+skip_empty = true
+
+[tool.coverage.run]
+branch = true
+source = ["ADT"]
+
+>>>>>>> origin/git
