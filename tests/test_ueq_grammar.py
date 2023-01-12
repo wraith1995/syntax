@@ -124,7 +124,7 @@ def test_module_abstract_classes(ueq_grammar):
     """
 
     # TODO: with pytest.raises(TypeError, match='Can\'t instantiate abstract class'):
-    abc_err = r"Can't instantiate abstract class \w+ with abstract methods? __init__"
+    abc_err = r"Cannot instantiate typing.Union"
     with pytest.raises(TypeError, match=abc_err):
         ueq_grammar.pred()
 
