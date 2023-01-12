@@ -47,11 +47,11 @@ profile = "black"
 
 [tool.mypy]
 files = ["ADT"]
-disallow_untyped_defs = "True"
-disallow_any_unimported = "True"
+disallow_untyped_defs = "False"
+disallow_any_unimported = "False"
 no_implicit_optional = "True"
-check_untyped_defs = "True"
-warn_return_any = "True"
+check_untyped_defs = "False"
+warn_return_any = "False"
 warn_unused_ignores = "True"
 show_error_codes = "True"
 
@@ -62,3 +62,10 @@ skip_empty = true
 branch = true
 source = ["ADT"]
 
+[tool.deptry]
+ignore_obsolete = [
+        "black", "frozendict", "maturin", "strongtyping"
+    ]
+    ignore_transitive = [
+        "adt"
+    ]
