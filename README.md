@@ -1,42 +1,17 @@
-# TODO (in no particular order)
-0. Resolve serious disagreements on the nature of validation beyond types. The possibility of internal type conversion, types of types and their handling, shittyness of python typing module.
-1. Different types of iteration methods: depth vs. breadth, external or internal, dup vs no dup, dup notion, ocality, local ordering, Nones, Names, Flattening. General Collections.abc interfance questions (sets, functions, etc...)
-2. The problem of matching over an IR that does not yet exist.
-3. Extension of existing ADTs or merging of ADTS
-4. Basic documentation.
-5. Vistior patterns
-6. Custom show or at least better show. 
-7. Python front end instead of text. See (2).
-8. Functorial IRs
-9. Logging intergration
-10. Github integrations
-11. Variations on the lambda calc implementation for examples. Add these to tests.
-12. Attrs vs. Dataclasses. Attrs might save some boiler plate, but it outside standard python.
-13. Greater variation on internal errors and consistenty with python.
-14. psf black
-15. Ref Mutability and selective mutalability/frozeness - ability to express cfg
-16. Integration with mypy/pyright/whwatever
-17. Function recursion helpers
-18. Folding/tree systems
-
-
-Pretty printing:
-Expr, stmt, graph
-
 Preable (subst)
 =======
 # syn
 
-[![Release](https://img.shields.io/github/v/release/wraith1995/syn)](https://img.shields.io/github/v/release/wraith1995/syn)
-[![Build status](https://img.shields.io/github/actions/workflow/status/wraith1995/syn/main.yml?branch=main)](https://github.com/wraith1995/syn/actions/workflows/main.yml?query=branch%3Amain)
-[![codecov](https://codecov.io/gh/wraith1995/syn/branch/main/graph/badge.svg)](https://codecov.io/gh/wraith1995/syn)
-[![Commit activity](https://img.shields.io/github/commit-activity/m/wraith1995/syn)](https://img.shields.io/github/commit-activity/m/wraith1995/syn)
-[![License](https://img.shields.io/github/license/wraith1995/syn)](https://img.shields.io/github/license/wraith1995/syn)
+[![Release](https://img.shields.io/github/v/release/wraith1995/syntax)](https://img.shields.io/github/v/release/wraith1995/syntax)
+[![Build status](https://img.shields.io/github/actions/workflow/status/wraith1995/syntax/main.yml?branch=main)](https://github.com/wraith1995/syntax/actions/workflows/main.yml?query=branch%3Amain)
+[![codecov](https://codecov.io/gh/wraith1995/syntax/branch/main/graph/badge.svg)](https://codecov.io/gh/wraith1995/syntax)
+[![Commit activity](https://img.shields.io/github/commit-activity/m/wraith1995/syntax)](https://img.shields.io/github/commit-activity/m/wraith1995/syntax)
+[![License](https://img.shields.io/github/license/wraith1995/syntax)](https://img.shields.io/github/license/wraith1995/syntax)
 
-erm
+Thing.... Description
 
-- **Github repository**: <https://github.com/wraith1995/syn/>
-- **Documentation** <https://wraith1995.github.io/syn/>
+- **Github repository**: <https://github.com/wraith1995/syntax/>
+- **Documentation** <https://wraith1995.github.io/syntax/>
 
 ## Getting started with your project
 
@@ -72,6 +47,32 @@ To enable the code coverage reports, see [here](https://fpgmaas.github.io/cookie
 - Add the API Token to your projects secrets with the name `PYPI_TOKEN` by visiting 
 [this page](https://github.com/wraith1995/syn/settings/secrets/actions/new).
 - Create a [new release](https://github.com/wraith1995/syn/releases/new) on Github. 
+
+
+# TODO (in no particular order)
+0. Resolve serious disagreements on the nature of validation beyond types. The possibility of internal type conversion, types of types and their handling, shittyness of python typing module.
+1. Different types of iteration methods: depth vs. breadth, external or internal, dup vs no dup, dup notion, ocality, local ordering, Nones, Names, Flattening. General Collections.abc interfance questions (sets, functions, etc...)
+2. The problem of matching over an IR that does not yet exist.
+3. Extension of existing ADTs or merging of ADTS
+4. Basic documentation.
+5. Vistior patterns
+6. Custom show or at least better show. 
+7. Python front end instead of text. See (2).
+8. Functorial IRs
+9. Logging intergration
+10. Github integrations
+11. Variations on the lambda calc implementation for examples. Add these to tests.
+12. Attrs vs. Dataclasses. Attrs might save some boiler plate, but it outside standard python.
+13. Greater variation on internal errors and consistenty with python.
+14. psf black
+15. Ref Mutability and selective mutalability/frozeness - ability to express cfg
+16. Integration with mypy/pyright/whwatever
+17. Function recursion helpers
+18. Folding/tree systems
+
+
+Pretty printing:
+Expr, stmt, graph
 Create a new tag in the form ``*.*.*``.
 
 For more details, see [here](https://fpgmaas.github.io/cookiecutter-poetry/features/cicd/#how-to-trigger-a-release).
