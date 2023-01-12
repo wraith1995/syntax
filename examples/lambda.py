@@ -4,10 +4,12 @@ from adt import ADT, stamp
 def is_valid_name(x):
     return type(x) is str
 
+
 # We need to ensure simple conversion in the matching...
 
 
-L = ADT("""
+L = ADT(
+    """
 module LAM {
 
 var = (name vname, stamp id)
@@ -16,10 +18,11 @@ expr = App (expr lhs, expr rhs)
      | Var (var arg)
      | Lam (var arg, expr body)
 }
-""", ext_checks={'name': is_valid_name},
-        ext_types={'name': str,
-                   'stamp': stamp},
-        defaults={stamp: lambda: stamp()})
+""",
+    ext_checks={"name": is_valid_name},
+    ext_types={"name": str, "stamp": stamp},
+    defaults={stamp: lambda: stamp()},
+)
 
 q = L.Var("a")
 print(q)
@@ -48,6 +51,8 @@ def freevars(e: L.expr) -> set[L.var]:
             r1 = freevars(e1)
             r2 = freevars(e2)
             return r1.union(r2)
+
+
 # Alpha conversion... change the names of all bound vars
 
 

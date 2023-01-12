@@ -14,23 +14,23 @@ def test_memoization(memo_grammar):
     assert memo_grammar.memo_prod(3, 4) is memo_grammar.memo_prod(3, 4)
     assert memo_grammar.memo_prod(3, 4) is not memo_grammar.memo_prod(3, 5)
 
-    assert memo_grammar.A() is memo_grammar.A()
+    assert memo_grammar.A is memo_grammar.A
     assert memo_grammar.B(3, 4) is memo_grammar.B(3, 4)
     assert memo_grammar.B(3, 4) is not memo_grammar.B(4, 4)
 
     assert memo_grammar.normal_prod(3, 4) is not memo_grammar.normal_prod(3, 4)
     assert memo_grammar.normal_prod(3, 4) == memo_grammar.normal_prod(3, 4)
 
-    assert memo_grammar.C() is not memo_grammar.C()
-    assert memo_grammar.C() == memo_grammar.C()
+    assert memo_grammar._C() is not memo_grammar._C()
+    assert memo_grammar._C() == memo_grammar._C()
 
     assert memo_grammar.D(3) is not memo_grammar.D(3)
     assert memo_grammar.D(3) == memo_grammar.D(3)
 
     assert memo_grammar.E(3) is memo_grammar.E(3)
 
-    assert memo_grammar.F() is not memo_grammar.F()
-    assert memo_grammar.F() == memo_grammar.F()
+    assert memo_grammar._F is not memo_grammar._F()
+    assert memo_grammar._F() == memo_grammar._F()
 
 
 def test_memoized_kwargs(memo_grammar):

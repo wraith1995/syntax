@@ -7,7 +7,7 @@ stampsdict: MutableMapping[int, int] = dict()
 class stamp:
     """A class representing a unique name."""
 
-    __slots__ = ('__weakref__', 'stamp', "args")
+    __slots__ = ("__weakref__", "stamp", "args")
 
     def __init__(self, args=None):
         """Create a unique name."""

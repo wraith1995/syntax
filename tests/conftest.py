@@ -43,10 +43,7 @@ def simple_grammar():
 
 @pytest.fixture(scope="session")
 def memo_grammar():
-    """
-    A test grammar with fully memoized types, partially memoized types, and
-    non-memoized types.
-    """
+    """Test grammar with fully memoized types, partially memoized types, and non-memoized types."""
     return ADT(
         """
         module memo_grammar {

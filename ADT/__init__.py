@@ -1,4 +1,4 @@
 from .adt import ADT, AbstractVisitor
-from .auxtypes import stamp, defaultStamp
+from .auxtypes import defaultStamp, stamp
 
-__all__ = ['ADT', 'stamp', 'defaultStamp']
+__all__ = ["ADT", "stamp", "defaultStamp"]

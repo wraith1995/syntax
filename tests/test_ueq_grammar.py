@@ -156,9 +156,7 @@ def test_create_problem(ueq_grammar, public_names):
     assert isinstance(problem, ueq_grammar.problem)
     assert problem.holes == tuple([Sym("x")])
     assert problem.knowns == tuple([Sym("y")])
-    assert problem.preds == tuple(
-        [ueq_grammar.Eq(ueq_grammar.Var(Sym("x")), ueq_grammar.Var(Sym("y")))]
-    )
+    assert problem.preds == tuple([ueq_grammar.Eq(ueq_grammar.Var(Sym("x")), ueq_grammar.Var(Sym("y")))])
     assert public_names(problem) == {"holes", "knowns", "preds"}
 
 

@@ -3,9 +3,9 @@ Tests of validator edge cases
 """
 
 # pylint: disable=no-member
-import re
-from enum import Enum
-from typing import Type, List, Literal
+# import re
+# from enum import Enum
+# from typing import List, Literal, Type
 
 import pytest
 

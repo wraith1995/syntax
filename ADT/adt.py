@@ -3,33 +3,32 @@
 Adopted from https://raw.githubusercontent.com/gilbo/atl/master/ATL/adt.py
 And again from https://github.com/ChezJrk/asdl/blob/master/src/asdl_adt/adt.py.
 """
+import inspect  # noqa: F401
 import sys
-import asdl  # type: ignore
+from abc import ABC, abstractmethod
+from collections import OrderedDict
+from collections.abc import Collection, Iterable, Mapping, Sequence
+from copy import copy, deepcopy
+from dataclasses import Field, field, make_dataclass, replace
+from itertools import chain
 from types import ModuleType
 from typing import (
-    Callable,
     Any,
-    Union,
+    Callable,
+    Dict,
+    List,
     NamedTuple,
     Optional,
-    Tuple,
-    List,
-    Dict,
     Set,
+    Tuple,
     Type,
+    Union,
 )
-from collections.abc import Sequence, Mapping, Collection, Iterable
-from collections import OrderedDict
 from weakref import WeakValueDictionary
-from dataclasses import make_dataclass, field, replace, Field
-from copy import copy, deepcopy
-from abc import ABC, abstractmethod
-from itertools import chain
+
+import asdl  # type: ignore
 from fastcore.all import typedispatch  # type: ignore
 from snake_egg._internal import PyVar  # type: ignore
-
-import inspect  # noqa: F401
-
 
 defaultsTy = Mapping[Union[str, type, Tuple[str, str], Tuple[str, type]], Any]
 
@@ -39,7 +38,6 @@ indent = "    "
 
 # class PrecdenceData(NamedTuple):
 #     """A Data structure to manage Precdence info."""
-
 #     isExprData: Set[str]
 #     exprToPrecData: Optional[Mapping[str,  Mapping[str, int]]]
 
@@ -99,7 +97,7 @@ class GenericADTError(Exception):
 class _AsdlAdtBase(ABC):
     @abstractmethod
     def __init__(self):
-        assert False, "Should be unreachable."
+        raise AssertionError("Should be unreachable")
 
 
 class _ProdBase(_AsdlAdtBase):
@@ -259,7 +257,7 @@ class ADTEnv:
         self.old = adsl_adt
         self.typeCollections: Dict[str, List[str]] = dict()
 
-        def fieldValidator(flds, name, names=set()):
+        def fieldValidator(flds, name, names=set()) -> List[str]:
             for fld in flds:
                 if fld.name in names:
                     raise ADTCreationError("In {0}, name conflict with {1}".format(name, fld.name))
@@ -269,9 +267,7 @@ class ADTEnv:
 
         for name, ty in adsl_adt.types.items():
             if name in self.constructorData:
-                raise ADTCreationError(
-                    "{0} conflicts with another name already defined".format(name)
-                )
+                raise ADTCreationError("{0} conflicts with another name already defined".format(name))
             if isinstance(ty, asdl.Product):
                 typ = type(name, (self.prodClass,), {})
                 self.superTypes[name] = typ
@@ -287,9 +283,7 @@ class ADTEnv:
                 self.typeCollections[name] = []
                 for summand in ty.types:
                     if summand.name in self.constructorDataPre:
-                        raise ADTCreationError(
-                            "{0} conflicts with another name already defined".format(summand.name)
-                        )
+                        raise ADTCreationError("{0} conflicts with another name already defined".format(summand.name))
                     fieldValidator(summand.fields, summand.name, names=myattrs.copy())
                     self.constructorDataPre[summand.name] = (
                         summand.fields + ty.attributes,
@@ -299,7 +293,7 @@ class ADTEnv:
 
             else:
                 raise ADTCreationError("ASDL item not sum nor product.")
-        for (name, (fields, ty)) in self.constructorDataPre.copy().items():
+        for name, (fields, ty) in self.constructorDataPre.copy().items():
             fieldData: list[field_data] = [
                 build_field_cdata(
                     name,
@@ -314,20 +308,18 @@ class ADTEnv:
             maxArgs = len(fieldData)
             minSet = list(filter(lambda x: not x.hasDefault, fieldData))
             minArgs = len(minSet)
-            self.constructorData[name] = constructor_data(
-                ty, fieldData, name, maxArgs, minArgs, minSet
-            )
+            self.constructorData[name] = constructor_data(ty, fieldData, name, maxArgs, minArgs, minSet)
         self.allTypeNames = set().union(*[set(v) for v in self.typeCollections.values()])
 
-    def isInterallyDefined(self, typ: type):
+    def isInterallyDefined(self, typ: type) -> bool:
         """Determine if a type is internally defined."""
         return issubclass(typ, self.sumClass) or issubclass(typ, self.prodClass)
 
-    def isInternalSum(self, typ: type):
+    def isInternalSum(self, typ: type) -> bool:
         """Determine if a type is an internally defined sum type."""
         return issubclass(typ, self.sumClass)
 
-    def isInternalProduct(self, typ: type):
+    def isInternalProduct(self, typ: type) -> bool:
         """Determine if a type is an internally defined product type."""
         return issubclass(typ, self.prodClass)
 
@@ -347,9 +339,7 @@ class ADTEnv:
             data.append(indent + "{0}: {1}".format(fd.name, tystr))
         data.append(
             indent
-            + "__match_args__ = ({0})".format(  # noqa: W503
-                ", ".join(['"' + fd.name + '"' for fd in cdata.fields])
-            )
+            + "__match_args__ = ({0})".format(", ".join(['"' + fd.name + '"' for fd in cdata.fields]))  # noqa: W503
         )
         inits = ["self"] + [fdinitstr(fd, self) for fd in cdata.fields]
         initstr = ", ".join(inits)
@@ -373,20 +363,14 @@ class ADTEnv:
             # stub_commands.append("{0}_type: typing.TypeAlias = {0}\n".format(name))
             if issubclass(self.superTypes[name], self.sumClass):
                 names = ", ".join(self.typeCollections[name])
-                stub_commands.append(
-                    "{1}_type: typing.TypeAlias = typing.Union[{0}]\n".format(names, name)
-                )
-                stub_commands.append(
-                    "{1}: typing.TypeAlias = typing.Union[{0}]\n".format(names, name)
-                )
+                stub_commands.append("{1}_type: typing.TypeAlias = typing.Union[{0}]\n".format(names, name))
+                stub_commands.append("{1}: typing.TypeAlias = typing.Union[{0}]\n".format(names, name))
                 stub_commands.append("class _{0}(abc.ABCMeta): ...".format(name))
             else:
                 stub_commands.append("{0}_type: typing.TypeAlias = {0}\n".format(name))
-        for (name, cd) in self.constructorData.items():
+        for name, _ in self.constructorData.items():
             stub_commands += self.generateClassStub(name)
-        stub_commands.append(
-            "_Any: typing.TypeAlias = Union[{0}]".format(", ".join(self.allTypeNames))
-        )
+        stub_commands.append("_Any: typing.TypeAlias = Union[{0}]".format(", ".join(self.allTypeNames)))
         return "\n".join(stub_commands)
 
     def define_all(self) -> List[str]:
@@ -399,6 +383,8 @@ class ADTEnv:
         for t in self.constructorData:
             if t not in all_defs:
                 all_defs.add(t)
+                if self.constructorData[t].maxArgs == 0:
+                    all_defs.add("_" + t)
         all_defs.add("_Any")
         return list(all_defs)
 
@@ -559,7 +545,6 @@ def build_dc(
         # namespace["__match_args__"] = __match_args__
         pass
     if visitor or env.options.visit:
-
         accept = build_visitor_accept(fieldData)
 
         namespace["accept"] = accept
@@ -573,8 +558,7 @@ def build_dc(
     assert isinstance(bf, Field)
     extra: List[Tuple[str, Type[Any], Field]] = [("___" + cname + "__", str, bf)]
     fields: List[Union[Tuple[str, Type[Any], Field], Tuple[str, Type[Any]]]] = [
-        (fd.name, fd.ty) if not fd.hasDefault else (fd.name, fd.ty, fieldp(fd.default))
-        for fd in fieldData
+        (fd.name, fd.ty) if not fd.hasDefault else (fd.name, fd.ty, fieldp(fd.default)) for fd in fieldData
     ]
     fields += extra
     try:
@@ -587,12 +571,10 @@ def build_dc(
             namespace=namespace,
         )
     except BaseException:
-        raise ADTCreationError(
-            "Failed to crate class for {0} with fields {1}".format(cname, fields)
-        )
+        raise ADTCreationError("Failed to crate class for {0} with fields {1}".format(cname, fields))
     if isConstant:
         val = cls()
-        return val
+        return (val, cls)
     else:
         return cls
 
@@ -817,9 +799,7 @@ def build_element_iteration_methods(Err, fieldData, env):
                 else:
                     iters = temp
             reps = [
-                toMapping(mapper)[x]
-                if not callable(mapper) and x in mapper
-                else (x.map(mapper) if test else x)
+                toMapping(mapper)[x] if not callable(mapper) and x in mapper else (x.map(mapper) if test else x)
                 for x in iters
             ]
             if not fd.seq:
@@ -835,14 +815,9 @@ def build_element_iteration_methods(Err, fieldData, env):
         # make sure nothing is None.
         nexts = chain(
             *[
-                (
-                    getattr(self, fd.name).loop()
-                    if not fd.seq
-                    else chain(*([x.loop() for x in getattr(self, fd.name)]))
-                )
+                (getattr(self, fd.name).loop() if not fd.seq else chain(*([x.loop() for x in getattr(self, fd.name)])))
                 for fd in fieldData
-                if (not internal or env.isInterallyDefined(fd.ty))
-                and getattr(self, fd.name) is not None  # noqa: W503
+                if (not internal or env.isInterallyDefined(fd.ty)) and getattr(self, fd.name) is not None  # noqa: W503
             ]
         )
         yield from nexts
@@ -861,9 +836,7 @@ def build_element_check(mod, egraphIsInstance, Err, env, cname):
         opt: bool,
         x: Any,
     ):
-        badType, badSeq, badElem, badCheck = build_local_adt_errors(
-            Err, x, cname, fieldName, targetType, opt
-        )
+        badType, badSeq, badElem, badCheck = build_local_adt_errors(Err, x, cname, fieldName, targetType, opt)
 
         earlyAble = env.isInternalProduct(targetType)
         tyname = targetType.__name__
@@ -965,9 +938,9 @@ def _build_classes(
     mod = ModuleType(asdl_mod.name)
     Err: type = type(asdl_mod.name + "Error", (Exception,), {})
     setattr(mod, "__err__", Err)
-    for (name, ty) in env.superTypes.items():
+    for name, ty in env.superTypes.items():
         setattr(mod, "_" + name, ty)
-    for (name, data) in env.constructorData.items():
+    for name, data in env.constructorData.items():
         dc = build_dc(
             env,
             data.name,
@@ -980,8 +953,13 @@ def _build_classes(
             slots=slots,
             visitor=visitor,
         )
-        setattr(mod, name, dc)
-    for (name, tys) in env.typeCollections.items():
+        match dc:
+            case (val, dc):
+                setattr(mod, name, val)
+                setattr(mod, "_" + name, dc)
+            case _:
+                setattr(mod, name, dc)
+    for name, tys in env.typeCollections.items():
         tysList: List[Type] = [getattr(mod, name) for name in tys]
         setattr(mod, name, Union[tuple(tysList)])
     allTypeNames = env.allTypeNames
@@ -1078,9 +1056,9 @@ def ADT(
 
     mod = _build_classes(asdl_ast, env, memoize=memoize, slots=slots, visitor=visitor)
     # cache values in case we might want them
-    setattr(mod, "_ast", asdl_ast)
+    setattr(mod, "_ast", asdl_ast)  # noqa: B010
     # mod._ast = asdl_ast
-    setattr(mod, "_defstr", asdl_str)
+    setattr(mod, "_defstr", asdl_str)  # noqa: B010
     # mod._defstr = asdl_str
     setattr(mod, "_env", env)
     mod.__doc__ = f"""ASDL Module Generated by ADT\n\n"

@@ -3,8 +3,9 @@ Tests that object immutability is respected through the standard Python features
 Of course one can always object.__setattr__, but one should not...
 """
 
-import pytest
 from dataclasses import FrozenInstanceError
+
+import pytest
 
 
 def test_immutable_prod(simple_grammar):

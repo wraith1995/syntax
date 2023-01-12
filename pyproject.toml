@@ -18,6 +18,7 @@ fastcore = "^1.5.27"
 frozendict = "^2.3.4"
 strongtyping = "^3.10.5"
 asdl = "^0.1.5"
+black = "22.12.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.2.0"

@@ -1,7 +1,9 @@
 from __future__ import annotations
-from ADT import ADT  # type: ignore
-from snake_egg import EGraph, Rewrite, Var
+
 import pytest  # noqa: F401
+from snake_egg import EGraph, Rewrite, Var
+
+from ADT import ADT  # type: ignore
 
 math = ADT(
     """ module MATH{
@@ -47,13 +49,9 @@ def checkExists(expr, expr1, iters=7):
 
 
 def test_simple_1():
-    assert checkExists(
-        math.Mul(math.Const(0), math.Const(42)), math.Paren(math.Const(0))
-    ) == math.Paren(math.Const(0))
+    assert checkExists(math.Mul(math.Const(0), math.Const(42)), math.Paren(math.Const(0))) == math.Paren(math.Const(0))
 
 
 def test_simple_2():
     foo = Var("foo")
-    assert checkExists(
-        math.Add(math.Const(0), math.Mul(math.Const(1), foo)), math.Paren(foo)
-    ) == math.Paren(foo)
+    assert checkExists(math.Add(math.Const(0), math.Mul(math.Const(1), foo)), math.Paren(foo)) == math.Paren(foo)
