@@ -3,7 +3,7 @@ Preable (subst)
 # syn
 
 [![Release](https://img.shields.io/github/v/release/wraith1995/syntax)](https://img.shields.io/github/v/release/wraith1995/syntax)
-[![Build status](https://github.com/wraith1995/syntax/actions/workflows/main.yml/badge.svg)](https://github.com/wraith1995/syntax/actions/workflows/main.yml)
+[![Build status](https://github.com/wraith1995/syntax/actions/workflows/main.yml/badge.svg?branch=main)](https://github.com/wraith1995/syntax/actions/workflows/main.yml)
 [![codecov](https://codecov.io/gh/wraith1995/syntax/branch/main/graph/badge.svg)](https://codecov.io/gh/wraith1995/syntax)
 [![Commit activity](https://img.shields.io/github/commit-activity/m/wraith1995/syntax)](https://img.shields.io/github/commit-activity/m/wraith1995/syntax)
 [![License](https://img.shields.io/github/license/wraith1995/syntax)](https://img.shields.io/github/license/wraith1995/syntax)
