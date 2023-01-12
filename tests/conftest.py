@@ -5,7 +5,7 @@ from types import ModuleType
 
 import pytest
 
-from adt import ADT
+from ADT import ADT
 
 
 @pytest.fixture(scope="session")

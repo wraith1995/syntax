@@ -4,10 +4,10 @@ Tests of the sum-type "attributes" feature of ASDL.
 
 # pylint: disable=no-member
 
-import adt
+import ADT as adt
 
 
-def test_basic_attributes():
+def test_basic_attributes() -> None:
     """
     Test a simple attributes scenario... no memoization or custom types.
     """
