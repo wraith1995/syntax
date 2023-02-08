@@ -36,27 +36,6 @@ defaultsTy = Mapping[Union[str, type, Tuple[str, str], Tuple[str, type]], Any]
 indent = "    "
 
 
-# class PrecdenceData(NamedTuple):
-#     """A Data structure to manage Precdence info."""
-#     isExprData: Set[str]
-#     exprToPrecData: Optional[Mapping[str,  Mapping[str, int]]]
-
-#     def isExpr(self, ty: str) -> bool:
-#         """Determine if a ty is an expression."""
-#         return ty in self.isExprData
-
-#     def exprPrec(self, ty: str, lhs: str, rhs: str) -> bool:
-#         """Determine if parens need to be added if  lhs <expr> rhs <expr>."""
-#         if isinstance(self.exprToPrecData, NoneType):
-#             return True
-#         assert self.isExpr(ty)
-#         assert ty in self.exprToPrecData
-#         option = self.exprToPrecData[ty]
-#         lhsS = option[lhs]
-#         rhsS = option[rhs]
-#         return lhsS <= rhsS
-
-
 class ADTOptions(NamedTuple):
     """Configuration structure for ADTs."""
 
@@ -511,7 +490,7 @@ def build_dc(
     element_checker = build_element_check(mod, egraphIsInstance, Err, env, cname)
     __post_init__ = build_post_init(fieldData, Err, cname, element_checker)
 
-    __iter__, map = build_element_iteration_methods(Err, fieldData, env)
+    __iter__, _map = build_element_iteration_methods(Err, fieldData, env)
 
     mcopy, update, dcopy = build_element_copy_methods(fieldData, env)
 
@@ -538,7 +517,7 @@ def build_dc(
     if env.options.loop:
         namespace["loop"] = __iter__
     if env.options.mapper:
-        namespace["map"] = map
+        namespace["map"] = _map
     if isConstant:
         namespace["__call__"] = lambda self: self
     if env.anyEgraph():
