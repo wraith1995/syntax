@@ -22,7 +22,6 @@ runs:
       uses: snok/install-poetry@v1
       with:
         virtualenvs-in-project: true
-
     - name: Load cached venv
       id: cached-poetry-dependencies
       uses: actions/cache@v3
