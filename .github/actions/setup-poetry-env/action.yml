@@ -18,8 +18,6 @@ runs:
       uses: ATiltedTree/setup-rust@v1.0.5
       with:
          rust-version: 1.66.1
-
-
     - name: Install Poetry
       uses: snok/install-poetry@v1
       with:
@@ -31,6 +29,11 @@ runs:
       with:
         path: .venv
         key: venv-${{ runner.os }}-${{ inputs.python-version }}-${{ hashFiles('poetry.lock') }}
+    - name: Install syntax
+      run: pip install git+https://wraith1995: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@github.com/wraith1995/syntax.git
+      shell: bash
+      with:
+        virtualenvs-in-project: true
 
     - name: Install dependencies
       if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
