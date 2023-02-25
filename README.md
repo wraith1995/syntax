@@ -1,4 +1,5 @@
-Preable (subst)
+NOTE:
+This is a draft - I am just making it public to make it easier for me to use in certain perverse situtations.
 =======
 # syn
 
