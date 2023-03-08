@@ -436,6 +436,8 @@ def build_post_init(fieldData, Err, cname, element_checker):
             if seq:
                 if isinstance(val, Iterable):
                     val = tuple(val)
+                elif isinstance(val, PyVar):
+                    return None
                 else:
                     raise Err(
                         """{0}.{1} must be iterable,
