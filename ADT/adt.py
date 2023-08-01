@@ -47,6 +47,7 @@ class ADTOptions(NamedTuple):
     loop: bool
     other: dict
     pprint: bool
+    walkers: bool
 
 
 defaultOpts = ADTOptions(
@@ -58,6 +59,7 @@ defaultOpts = ADTOptions(
     loop=True,
     other={},
     pprint=True,
+    walkers=True,
 )
 
 
@@ -327,6 +329,8 @@ class ADTEnv:
             data.append("\n")
             data.append("{0}: _{0} = _{0}()".format(name))
             data.append("\n")
+        if self.options.loop:
+            data.append(indent + "def loop(self, internal: bool = True) -> typing.Iterator[Any]: ...\n")
         return data
 
     def generateStub(self, oname: str) -> str:
