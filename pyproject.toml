@@ -1,41 +1,20 @@
-[tool.poetry]
-name = "syntax"
-version = "0.0.3"
-description = "A package for writing ADTs in a pythonic way, mainly aimed at making IRs, DSLs, Compilers, etc."
-authors = ["Teodoro Collin <teoc@mit.edu>"]
-repository = "https://github.com/wraith1995/syntax"
-documentation = "https://wraith1995.github.io/syntax/"
-readme = "README.md"
-packages = [
-  {include = "ADT"}
-]
-
-[tool.poetry.dependencies]
-python = ">=3.10,<4.0"
-snake-egg = {git = "https://github.com/egraphs-good/snake-egg"}
-maturin = "^0.14.9"
-fastcore = "^1.5.27"
-frozendict = "^2.3.4"
-strongtyping = "^3.10.5"
-asdl = "^0.1.5"
-black = "22.12.0"
-
-[tool.poetry.group.dev.dependencies]
-pytest = "^7.2.0"
-pytest-cov = "^4.0.0"
-deptry = "^0.6.4"
-mypy = "^0.981"
-pre-commit = "^2.20.0"
-tox = "^3.25.1"
-
-[tool.poetry.group.docs.dependencies]
-mkdocs = "^1.4.2"
-mkdocs-material = "^8.5.10"
-mkdocstrings = {extras = ["python"], version = "^0.19.0"}
-
 [build-system]
-requires = ["poetry-core>=1.0.0"]
-build-backend = "poetry.core.masonry.api"
+requires = ["setuptools", "setuptools-scm"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "syntax"
+version = "0.0.4"
+requires-python = ">=3.10"
+description = "A package for writing ADTs in a pythonic way, mainly aimed at making IRs, DSLs, Compilers, etc."
+authors = [{name = "Teodoro F. Collin", email = "teoc@mit.edu"}]
+readme = "README.md"
+dependencies = ["fastcore", "frozendict", "strongtyping",
+"asdl", "black", "pytest", "pytest-cov", "deptry",
+"pre-commit", "tox", "typing-extensions", "flake8", "yapf"]	
+
+[project.optional-dependencies]
+EGG=["snake-egg @ git+https://git@github.com/egraphs-good/snake-egg", "maturin"]
 
 [tool.black]
 line-length = 120

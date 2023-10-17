@@ -28,7 +28,10 @@ from weakref import WeakValueDictionary
 
 import asdl  # type: ignore
 from fastcore.all import typedispatch  # type: ignore
-from snake_egg._internal import PyVar  # type: ignore
+try:
+    from snake_egg._internal import PyVar  # type: ignore
+except ImportError:
+    PyVar = None
 
 defaultsTy = Mapping[Union[str, type, Tuple[str, str], Tuple[str, type]], Any]
 
@@ -339,8 +342,13 @@ class ADTEnv:
             "import abc",
             "import typing",
             "from syntax import stamp",
-            "from snake_egg._internal import PyVar",
         ]
+        pyVarCS = ["try:",
+                   indent + "from snake_egg._internal import PyVar",
+                   "except ImportError:",
+                   indent + "PyVar = None"]
+        if PyVar is not None:
+            stub_commands += pyVarCS
         stub_commands.append("__all__ = ['{0}']\n".format(",".join(self.define_all())))
         for name in self.superTypes:
             # stub_commands.append("{0}_type: typing.TypeAlias = {0}\n".format(name))
@@ -440,7 +448,7 @@ def build_post_init(fieldData, Err, cname, element_checker):
             if seq:
                 if isinstance(val, Iterable):
                     val = tuple(val)
-                elif isinstance(val, PyVar):
+                elif PyVar is not None and isinstance(val, PyVar):
                     return None
                 else:
                     raise Err(
@@ -888,7 +896,7 @@ def build_egraph_instance_check(env):
         else:
             tyName = ty.__name__
             if env.useEgraph(tyName):
-                return isinstance(val, PyVar) or isinstance(val, str)
+                return (PyVar is not None and isinstance(val, PyVar)) or isinstance(val, str)
 
     return egraphIsInstance
 
