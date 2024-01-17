@@ -341,7 +341,8 @@ class ADTEnv:
         stub_commands = [
             "import abc",
             "import typing",
-            "from syntax import stamp",
+            "from typing import Any, Union",
+            "from ADT import stamp",
         ]
         pyVarCS = ["try:",
                    indent + "from snake_egg._internal import PyVar",
