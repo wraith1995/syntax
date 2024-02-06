@@ -481,6 +481,72 @@ def build_post_init(fieldData, Err, cname, element_checker):
 
     return __post_init__
 
+# QUESTIONS: 
+# 1. I don't know how to represent env as the input to the function calls 
+# 2. By converting everything to strings, this makes it so all of the inputs to the functions are now strings. How do I handle this? Do I do something in defining those functions now?
+# 3. Now, how do I assign all of these values to namespace dictionary 
+def  generateDC(env: ADTEnv,
+    cname: str,
+    parent: type,
+    fieldData: list[field_data],
+    Err: type,
+    mod: ModuleType,
+    memoize: bool = True,
+    namespace_injector=None,
+    visitor: bool = True,
+    slots: bool = True ):
+    
+    dataclass_commands=[]
+    dataclass_commands.append("isConstant="+str(len(fieldData)==0))
+    classdict: WeakValueDictionary = WeakValueDictionary({})
+     # whats the need for a weakvalue dictionary rather than a normal dict
+    dataclass_commands.append("classdict="+str(classdict))
+    env_string= env.generateClassStub(name=env.name)
+    egraphIsInstance=build_egraph_instance_check(env)
+    #egraphIsInstance is a bool 
+    
+    # I need to figure out what these functions should return. # Also, now that these are all strings, how do I assign each of these values 
+    # to the dictionary 
+    
+    # #this can't technically be a string as input (how do I represent env as input to this func: should it be converted to a stub?)
+    # dataclass_commands.append(f"egraphIsInstance=build_egraph_instance_check({env})")
+    # dataclass_commands.append(f"__new__=build_new({memoize},{str(classdict)})")
+                
+    # # do I need to use inspect on mod? or do I need to use inspect within that part (the part where modtype is defined)
+    # dataclass_commands.append(f"element_checker = build_element_check({mod}, {egraphIsInstance}, {Err}, {env}, {cname})")
+    #internal data to the program should not be a string, 
+    #if it ends up being a func
+    #if its something thats controlling the input, it should not be a string 
+    
+    # # case: if it ends up being that i am supposed to convert all of these functions to 
+    # #Need to define build element check to return a string now 
+    # dataclass_commands.append(f" __post_init__ = build_post_init({fieldDataStr}, {Err}, {cname}, build_element_check({mod}, {egraphIsInstance}, {Err}, {env}, {cname}))")
+    # dataclass_commands.append(f"__iter__, _map=build_element_iteration_methods({Err}, {fieldDataStr}, {env})")
+    # dataclass_commands.append(f"mcopy, update, dcopy = build_element_copy_methods({fieldData}, {env})")
+    # dataclass_commands.append(f"isdisjoint, isomorphism, __isomorphism__ = build_function_category_methods({fieldData}, {env}, {Err})")
+
+
+    #inspect.getsource()
+    
+    #interpreter runs program 
+    
+
+
+    
+    
+    
+    
+    
+    
+    
+
+def build_new_str(memoize:bool,classdict:str):
+    return """def __new__(cls, *args, **kwargs):
+                ...
+                don't change anything in this (just copy and paste )
+                    """ 
+    # def newTest(cls, *args, **kwargs):
+        # return a string rather than an object 
 
 def build_dc(
     env: ADTEnv,
@@ -496,6 +562,8 @@ def build_dc(
 ):
     """Build a dataclass for an ADT type."""
     isConstant = len(fieldData) == 0
+    
+    
     classdict: WeakValueDictionary = WeakValueDictionary({})
 
     egraphIsInstance = build_egraph_instance_check(env)
@@ -556,6 +624,7 @@ def build_dc(
     ]
     fields += extra
     try:
+        #make a string that outputs the corresponding dataclass @dataclass /n class name 
         cls = make_dataclass(
             cname,
             fields,
@@ -600,6 +669,61 @@ def build_visitor_accept(fieldData):
 
     return accept
 
+
+def build_dc_test(env: ADTEnv,
+    cname: str,
+    parent: type,
+    fieldData: list[field_data],
+    Err: type,
+    mod: ModuleType,
+    memoize: bool = True,
+    namespace_injector=None,
+    visitor: bool = True,
+    slots: bool = True):
+    def fieldp(x) -> Field:
+        tmp = field(default_factory=x) if callable(x) else field(default=x)
+        assert isinstance(tmp, Field)
+        return tmp
+
+    bf = field(default=("___" + cname + "__"), init=False, repr=False)
+    assert isinstance(bf, Field)
+    extra: List[Tuple[str, Type[Any], Field]] = [("___" + cname + "__", str, bf)]
+    fields: List[Union[Tuple[str, Type[Any], Field], Tuple[str, Type[Any]]]] = [
+        (fd.name, fd.ty) if not fd.hasDefault else (fd.name, fd.ty, fieldp(fd.default)) for fd in fieldData
+    ]
+    fields += extra
+    
+    #make a string that outputs the corresponding dataclass @dataclass /n class name 
+   
+    field_strings = []
+    for field_tuple in fields:
+        if len(field_tuple) == 2:
+            name, typ = field_tuple
+            # If no specific type is defined, use 'typing.Any'
+            typ_str = "'typing.Any'" if typ is None else typ.__name__
+            field_strings.append(f"{name}: {typ_str}")
+        else:
+            name, typ, field_instance = field_tuple
+            # If no specific type is defined, use 'typing.Any'
+            typ_str = "'typing.Any'" if typ is None else typ.__name__
+            # Format the string with the field instance and type
+            field_strings.append(f"{name}: {typ_str} = {field_instance.default} ({field_instance.ty.__name__})")
+
+    # Concatenate field strings with newline character
+    fields_string = "\n".join(field_strings)
+        
+    
+    # do I need to get source code for parent?
+    #do I convert the field def to string too?
+    dataclass_string=f" @dataclass(frozen={True},slots={slots}) \n class {cname} ({parent}) \n {fields_string}"
+    return dataclass_string
+   
+    
+    
+
+    
+
+    
 
 def build_function_category_methods(fieldData, env, Err):
     """Build methods to treat functions as functions as sets."""
