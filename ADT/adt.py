@@ -481,72 +481,7 @@ def build_post_init(fieldData, Err, cname, element_checker):
 
     return __post_init__
 
-# QUESTIONS: 
-# 1. I don't know how to represent env as the input to the function calls 
-# 2. By converting everything to strings, this makes it so all of the inputs to the functions are now strings. How do I handle this? Do I do something in defining those functions now?
-# 3. Now, how do I assign all of these values to namespace dictionary 
-def  generateDC(env: ADTEnv,
-    cname: str,
-    parent: type,
-    fieldData: list[field_data],
-    Err: type,
-    mod: ModuleType,
-    memoize: bool = True,
-    namespace_injector=None,
-    visitor: bool = True,
-    slots: bool = True ):
-    
-    dataclass_commands=[]
-    dataclass_commands.append("isConstant="+str(len(fieldData)==0))
-    classdict: WeakValueDictionary = WeakValueDictionary({})
-     # whats the need for a weakvalue dictionary rather than a normal dict
-    dataclass_commands.append("classdict="+str(classdict))
-    env_string= env.generateClassStub(name=env.name)
-    egraphIsInstance=build_egraph_instance_check(env)
-    #egraphIsInstance is a bool 
-    
-    # I need to figure out what these functions should return. # Also, now that these are all strings, how do I assign each of these values 
-    # to the dictionary 
-    
-    # #this can't technically be a string as input (how do I represent env as input to this func: should it be converted to a stub?)
-    # dataclass_commands.append(f"egraphIsInstance=build_egraph_instance_check({env})")
-    # dataclass_commands.append(f"__new__=build_new({memoize},{str(classdict)})")
-                
-    # # do I need to use inspect on mod? or do I need to use inspect within that part (the part where modtype is defined)
-    # dataclass_commands.append(f"element_checker = build_element_check({mod}, {egraphIsInstance}, {Err}, {env}, {cname})")
-    #internal data to the program should not be a string, 
-    #if it ends up being a func
-    #if its something thats controlling the input, it should not be a string 
-    
-    # # case: if it ends up being that i am supposed to convert all of these functions to 
-    # #Need to define build element check to return a string now 
-    # dataclass_commands.append(f" __post_init__ = build_post_init({fieldDataStr}, {Err}, {cname}, build_element_check({mod}, {egraphIsInstance}, {Err}, {env}, {cname}))")
-    # dataclass_commands.append(f"__iter__, _map=build_element_iteration_methods({Err}, {fieldDataStr}, {env})")
-    # dataclass_commands.append(f"mcopy, update, dcopy = build_element_copy_methods({fieldData}, {env})")
-    # dataclass_commands.append(f"isdisjoint, isomorphism, __isomorphism__ = build_function_category_methods({fieldData}, {env}, {Err})")
 
-
-    #inspect.getsource()
-    
-    #interpreter runs program 
-    
-
-
-    
-    
-    
-    
-    
-    
-    
-
-def build_new_str(memoize:bool,classdict:str):
-    return """def __new__(cls, *args, **kwargs):
-                ...
-                don't change anything in this (just copy and paste )
-                    """ 
-    # def newTest(cls, *args, **kwargs):
-        # return a string rather than an object 
 
 def build_dc(
     env: ADTEnv,
@@ -669,16 +604,22 @@ def build_visitor_accept(fieldData):
 
     return accept
 
+def _build_classes_test(
+    env: ADTEnv,
+    slots: bool = False,
+):
+    dataclasses=[]
+    for name, data in env.constructorData.items():
+        dataclasses.append(build_dc_test(data.name,data.sup,data.fields,slots=slots)) #should return a string
+        
+    all_dataclasses_str="\n".join(dataclasses)
+    return all_dataclasses_str
+    
 
-def build_dc_test(env: ADTEnv,
+def build_dc_test(
     cname: str,
     parent: type,
     fieldData: list[field_data],
-    Err: type,
-    mod: ModuleType,
-    memoize: bool = True,
-    namespace_injector=None,
-    visitor: bool = True,
     slots: bool = True):
     def fieldp(x) -> Field:
         tmp = field(default_factory=x) if callable(x) else field(default=x)
@@ -714,7 +655,6 @@ def build_dc_test(env: ADTEnv,
         
     
     # do I need to get source code for parent?
-    #do I convert the field def to string too?
     dataclass_string=f" @dataclass(frozen={True},slots={slots}) \n class {cname} ({parent}) \n {fields_string}"
     return dataclass_string
    
@@ -1171,19 +1111,23 @@ def ADT(
         pass
     else:
         raise ADTCreationError("Memoization should be a set or Bool")
+    
+    all_dataclasses_str= _build_classes_test(env,slots=slots)
+    with open("dataclass_test_str.py", 'w') as f:
+        f.write(all_dataclasses_str)
 
-    mod = _build_classes(asdl_ast, env, memoize=memoize, slots=slots, visitor=visitor)
-    # cache values in case we might want them
-    setattr(mod, "_ast", asdl_ast)  # noqa: B010
-    # mod._ast = asdl_ast
-    setattr(mod, "_defstr", asdl_str)  # noqa: B010
-    # mod._defstr = asdl_str
-    setattr(mod, "_env", env)
-    mod.__doc__ = f"""ASDL Module Generated by ADT\n\n"
-    f"Original ASDL description:\n{asdl_str}"""
-    if stubfile is not None:
-        with open(stubfile, "w+") as f:
-            text = env.generateStub("")
-            f.write(text)
+    # mod = _build_classes(asdl_ast, env, memoize=memoize, slots=slots, visitor=visitor)
+    # # cache values in case we might want them
+    # setattr(mod, "_ast", asdl_ast)  # noqa: B010
+    # # mod._ast = asdl_ast
+    # setattr(mod, "_defstr", asdl_str)  # noqa: B010
+    # # mod._defstr = asdl_str
+    # setattr(mod, "_env", env)
+    # mod.__doc__ = f"""ASDL Module Generated by ADT\n\n"
+    # f"Original ASDL description:\n{asdl_str}"""
+    # if stubfile is not None:
+    #     with open(stubfile, "w+") as f:
+    #         text = env.generateStub("")
+    #         f.write(text)
 
-    return mod
+    # return mod
