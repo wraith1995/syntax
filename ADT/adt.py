@@ -433,8 +433,51 @@ def build_local_adt_errors(Err, x, cname, fieldName, targetType, opt):
     return badType, badSeq, badElem, badCheck
 
 
+def build_post_init_str(fieldData,Err,cname,element_checker):
+    """Build string version of post init function"""
+    #field Data string version
+    
+    #now I am confused. Is the fieldData the string version that i created in build_dc_test?
+    
+    new_field_data= []
+    for fd in fieldData:
+        fd_type= fd.ty #do I need to inspect this?
+        fd_type_source=inspect.getsource(fd.ty)
+        fd_chk_source= inspect.getsource(fd.chk)
+        
+        new_field_data.append((fd.seq,fd.opt,fd_chk_source,fd.name,fd_type_source))
+        
+        
+        
+        """    name: str
+            seq: bool
+            opt: bool
+            ty: type
+            chk: Callable
+            hasDefault: bool
+            default: Any"""
+            
+    #I don't think Im doing this right
+    
+    return """
+        def __post_init__(self): \n
+            for fd in new_field_data:
+                
+            
+    """
+    
+      
+       
+            
+        
+        
+        
+        
+
+
 def build_post_init(fieldData, Err, cname, element_checker):
     """Build dataclass post init function."""
+    
 
     def __post_init__(self):
         for fd in fieldData:
@@ -483,98 +526,7 @@ def build_post_init(fieldData, Err, cname, element_checker):
 
 
 
-def build_dc(
-    env: ADTEnv,
-    cname: str,
-    parent: type,
-    fieldData: list[field_data],
-    Err: type,
-    mod: ModuleType,
-    memoize: bool = True,
-    namespace_injector=None,
-    visitor: bool = True,
-    slots: bool = True,
-):
-    """Build a dataclass for an ADT type."""
-    isConstant = len(fieldData) == 0
-    
-    
-    classdict: WeakValueDictionary = WeakValueDictionary({})
 
-    egraphIsInstance = build_egraph_instance_check(env)
-
-    __new__ = build_new(memoize, classdict)
-
-    element_checker = build_element_check(mod, egraphIsInstance, Err, env, cname)
-    __post_init__ = build_post_init(fieldData, Err, cname, element_checker)
-
-    __iter__, _map = build_element_iteration_methods(Err, fieldData, env)
-
-    mcopy, update, dcopy = build_element_copy_methods(fieldData, env)
-
-    isdisjoint, isomorphism, __isomorphism__ = build_function_category_methods(fieldData, env, Err)
-
-    namespace = {}
-    if namespace_injector is not None:
-        namespace = namespace_injector(cname, parent, fieldData, Err, parent)
-    if memoize:
-        namespace["__post_init__"] = __post_init__
-        namespace["__new__"] = __new__
-    else:
-        namespace["__post_init__"] = __post_init__
-    if env.options.copyMethods:
-        namespace["__copy__"] = mcopy
-        namespace["copy"] = mcopy
-        namespace["update"] = update
-        namespace["__deepcopy__"] = dcopy
-    # namespace["__contains__"] = __contains__
-    if env.options.setfunctions:
-        namespace["isdisjoint"] = isdisjoint
-        namespace["isomorphism"] = isomorphism
-        namespace["__isomorphism__"] = __isomorphism__
-    if env.options.loop:
-        namespace["loop"] = __iter__
-    if env.options.mapper:
-        namespace["map"] = _map
-    if isConstant:
-        namespace["__call__"] = lambda self: self
-    if env.anyEgraph():
-        # namespace["__match_args__"] = __match_args__
-        pass
-    if visitor or env.options.visit:
-        accept = build_visitor_accept(fieldData)
-
-        namespace["accept"] = accept
-
-    def fieldp(x) -> Field:
-        tmp = field(default_factory=x) if callable(x) else field(default=x)
-        assert isinstance(tmp, Field)
-        return tmp
-
-    bf = field(default=("___" + cname + "__"), init=False, repr=False)
-    assert isinstance(bf, Field)
-    extra: List[Tuple[str, Type[Any], Field]] = [("___" + cname + "__", str, bf)]
-    fields: List[Union[Tuple[str, Type[Any], Field], Tuple[str, Type[Any]]]] = [
-        (fd.name, fd.ty) if not fd.hasDefault else (fd.name, fd.ty, fieldp(fd.default)) for fd in fieldData
-    ]
-    fields += extra
-    try:
-        #make a string that outputs the corresponding dataclass @dataclass /n class name 
-        cls = make_dataclass(
-            cname,
-            fields,
-            bases=(parent,),
-            frozen=True,
-            slots=slots,
-            namespace=namespace,
-        )
-    except BaseException:
-        raise ADTCreationError("Failed to crate class for {0} with fields {1}".format(cname, fields))
-    if isConstant:
-        val = cls()
-        return (val, cls)
-    else:
-        return cls
 
 
 def build_visitor_accept(fieldData):
@@ -659,12 +611,6 @@ def build_dc_test(
     return dataclass_string
    
     
-    
-
-    
-
-    
-
 def build_function_category_methods(fieldData, env, Err):
     """Build methods to treat functions as functions as sets."""
 
@@ -952,18 +898,6 @@ def build_element_check(mod, egraphIsInstance, Err, env, cname):
     return element_checker
 
 
-def build_egraph_instance_check(env):
-    """Add methods to manage use of egraphs."""
-
-    def egraphIsInstance(val, ty):
-        if isinstance(val, ty):
-            return True
-        else:
-            tyName = ty.__name__
-            if env.useEgraph(tyName):
-                return (PyVar is not None and isinstance(val, PyVar)) or isinstance(val, str)
-
-    return egraphIsInstance
 
 
 def build_new(memoize, classdict):
@@ -983,6 +917,25 @@ def build_new(memoize, classdict):
             return obj
 
     return __new__
+
+def build_new_str(memoize,classdict):
+    """Represent new function as a string """
+    return """
+    def __new__(cls, *args, **kwargs):
+            obj = object.__new__(cls)
+            cls.__init__(obj, *args, **kwargs)
+            # build the data class to check if it exists.
+            # Hope this is gc'd quickly.
+            if memoize and (obj in classdict):
+                return classdict[(obj)]
+            elif memoize:
+                classdict[obj] = obj
+                return obj
+            else:
+                return obj
+
+    return __new__
+"""
 
 
 def _build_classes(
