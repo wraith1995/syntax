@@ -441,27 +441,46 @@ def build_post_init_str(fieldData,Err,cname,element_checker):
     
     new_field_data= []
     for fd in fieldData:
-        fd_type= fd.ty #do I need to inspect this?
+        fd_type= fd.ty 
+        
+        #write a list of imports and call that first in ADT to be assigned to generated file (look at stub for a guide)
+        
+        #get source name and then figure out how to import to generated 
+        #keep a list of imports needed
         fd_type_source=inspect.getsource(fd.ty)
         fd_chk_source= inspect.getsource(fd.chk)
         
+        
+        #now it knows what these are, but you need to convert these to strings (qualify name or something)
+        
         new_field_data.append((fd.seq,fd.opt,fd_chk_source,fd.name,fd_type_source))
         
+        final=[]
         
-        
-        """    name: str
-            seq: bool
-            opt: bool
-            ty: type
-            chk: Callable
-            hasDefault: bool
-            default: Any"""
-            
-    #I don't think Im doing this right
     
+    #make sure there is code for the Errors (just put this at the top of the file)
+    
+    #generate post init for one field and combine 
     return """
-        def __post_init__(self): \n
-            for fd in new_field_data:
+        def __post_init__(self):
+            val= getattr(self,name)
+            if seq:
+                if isinstance(val,Iterable):
+                    val=tuple(val)
+                    #check each element in the sequence
+                    for x in val: 
+                        (_, xp) = element_checker(cname, fieldName, ty, chk, opt, x)
+                        vals.append(xp)
+                    valsp = tuple(vals)
+                    object.__setattr__(self, name, valsp)
+                    
+            if opt:
+                if not (val is None and opt) and not fd.chk: (I know I need to replace fd.chk)
+                    raise badCheck
+                    
+            
+                
+            
                 
             
     """
@@ -483,6 +502,7 @@ def build_post_init(fieldData, Err, cname, element_checker):
         for fd in fieldData:
             seq = fd.seq
             opt = fd.opt
+            #check called and should be right type (only None if type is none or if its optional)
             chk = fd.chk
             fieldName = fd.name
             ty = fd.ty
@@ -492,8 +512,7 @@ def build_post_init(fieldData, Err, cname, element_checker):
             if seq:
                 if isinstance(val, Iterable):
                     val = tuple(val)
-                elif PyVar is not None and isinstance(val, PyVar):
-                    return None
+                
                 else:
                     raise Err(
                         """{0}.{1} must be iterable,
@@ -829,8 +848,10 @@ def build_element_iteration_methods(Err, fieldData, env):
     return __iter__, map
 
 
-def build_element_check(mod, egraphIsInstance, Err, env, cname):
+def build_element_check(mod, Err, env, cname):
     """Add method to check arguments and convert as needed."""
+    
+    #optional, sequence, or an item (check if its either of these)
 
     def element_checker(
         cname: str,
@@ -857,7 +878,7 @@ def build_element_check(mod, egraphIsInstance, Err, env, cname):
         convert = False
         if x is None and opt:
             return (False, None)
-        if not egraphIsInstance(x, targetType):
+        if True:
             if not earlyAble:
                 raise badType
             else:
@@ -875,7 +896,7 @@ def build_element_check(mod, egraphIsInstance, Err, env, cname):
                             convert = True
                         except BaseException:
                             raise badSeq
-                elif singleType is not None and egraphIsInstance(x, singleType):
+                elif singleType is not None:
                     # CHECK: How does opt interact with this case?
                     # CHECK: How does this interact with seq case?
                     try:
@@ -1066,9 +1087,23 @@ def ADT(
         raise ADTCreationError("Memoization should be a set or Bool")
     
     all_dataclasses_str= _build_classes_test(env,slots=slots)
+    #make the name something you can parametrize
     with open("dataclass_test_str.py", 'w') as f:
         f.write(all_dataclasses_str)
+        
+    generate_module_content("dataclass_test_str",all_dataclasses_str)
 
+    #need to turn this file into module
+    
+def generate_module_content(module_name, all_dataclasses_str):
+    module_content = f"""
+    # Module: {module_name}
+    {all_dataclasses_str}
+    """
+    return module_content
+    
+    
+    
     # mod = _build_classes(asdl_ast, env, memoize=memoize, slots=slots, visitor=visitor)
     # # cache values in case we might want them
     # setattr(mod, "_ast", asdl_ast)  # noqa: B010
