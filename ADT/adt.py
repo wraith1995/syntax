@@ -12,6 +12,7 @@ from copy import copy, deepcopy
 from dataclasses import Field, field, make_dataclass, replace
 from itertools import chain
 from types import ModuleType
+import importlib.util
 from typing import (
     Any,
     Callable,
@@ -335,8 +336,11 @@ class ADTEnv:
         # if self.options.loop:
         #     data.append(indent + "def loop(self, internal: bool = True) -> typing.Iterator[Any]: ...\n")
         return data
+    
+    def generateImportsAndErrors(self):
+        """Generate the Imports and Errors for an ADT"""
 
-    def generateStub(self, oname: str) -> str:
+    def generateStub(self) -> str:
         """Generate stub file for an ADT."""
         stub_commands = [
             "import abc",
@@ -1088,22 +1092,41 @@ def ADT(
     
     all_dataclasses_str= _build_classes_test(env,slots=slots)
     #make the name something you can parametrize
+    stub= env.generateStub()
+    
+    with open("dataclass_test_str.py",'w') as f:
+        f.write(stub)
+    
+
     with open("dataclass_test_str.py", 'w') as f:
         f.write(all_dataclasses_str)
         
-    generate_module_content("dataclass_test_str",all_dataclasses_str)
+    print("MAKES IT HERE")
+        
+    mod=create_module_from_file("dataclass_test_str.py","dataclass_test_str")
+    if(mod is None):
+        raise TypeError("module is None")
+    return mod
 
+
+def create_module_from_file(file_path, module_name):
+    with open(file_path, 'r') as file:
+        code = file.read()
+
+    spec = importlib.util.spec_from_loader(module_name, loader=None)
+    if (spec is not None):
+        module = importlib.util.module_from_spec(spec)
+        exec(code, module.__dict__)
+        sys.modules[module_name] = module
+
+        return module
+    
+    
     #need to turn this file into module
-    
-def generate_module_content(module_name, all_dataclasses_str):
-    module_content = f"""
-    # Module: {module_name}
-    {all_dataclasses_str}
-    """
-    return module_content
+
     
     
-    
+# generate_module_content("dataclass_test_str")
     # mod = _build_classes(asdl_ast, env, memoize=memoize, slots=slots, visitor=visitor)
     # # cache values in case we might want them
     # setattr(mod, "_ast", asdl_ast)  # noqa: B010
