@@ -13,6 +13,7 @@ from dataclasses import Field, field, make_dataclass, replace
 from itertools import chain
 from types import ModuleType
 import importlib.util
+import os
 from typing import (
     Any,
     Callable,
@@ -436,6 +437,22 @@ def build_local_adt_errors(Err, x, cname, fieldName, targetType, opt):
     )
     return badType, badSeq, badElem, badCheck
 
+def get_source_code(obj):
+    source_lines, _ = inspect.getsourcelines(obj)
+    return ''.join(source_lines)
+
+def save_type_source_to_file(typ, filename):
+    source_code = get_source_code(typ)
+    with open(filename, 'w') as file:
+        file.write(source_code)
+
+def get_import_statement(obj):
+    module = inspect.getmodule(obj)
+    if module is not None:
+        module_path = inspect.getfile(module)
+        module_name = os.path.splitext(os.path.basename(module_path))[0]
+        return f"from {module_name} import {obj.__name__}"
+
 
 def build_post_init_str(fieldData,Err,cname,element_checker):
     """Build string version of post init function"""
@@ -444,6 +461,7 @@ def build_post_init_str(fieldData,Err,cname,element_checker):
     #now I am confused. Is the fieldData the string version that i created in build_dc_test?
     
     new_field_data= []
+    thingsToImport=[]
     for fd in fieldData:
         fd_type= fd.ty 
         
@@ -451,12 +469,35 @@ def build_post_init_str(fieldData,Err,cname,element_checker):
         
         #get source name and then figure out how to import to generated 
         #keep a list of imports needed
-        fd_type_source=inspect.getsource(fd.ty)
-        fd_chk_source= inspect.getsource(fd.chk)
+        #function object has __qualname__
+        
+        # I first need to turn type and chk into modules I think
+        # Can I 1. Get source code, 2. save source code to file 3. turn that file to a module, 4. get module import statement, 5. add that import statement to generated file 
+       
+       #1/2.get and save source code in imports.py
+        import_type_source= save_type_source_to_file(fd_type,"imports.py") # do I need to save the source somewhere
+        
+        # 3. Turn file to module 
+        new_module= create_module_from_file("imports.py","typeMod")
+        
+        #4. get import statement 
+        import_name_type= get_import_statement(new_module)
+        thingsToImport.append(import_name_type) 
+        
+        
+        import_chk= save_type_source_to_file(fd.chk,"imports.py") # do I need to save the source somewhere 
+        
+        #I think I need to add this as an import at the top of the file somehow 
+        import_name_chk= get_import_statement(fd.chk) 
+        thingsToImport.append(import_name_type)
+        thingsToImport.append(import_name_chk)
+        
         
         
         #now it knows what these are, but you need to convert these to strings (qualify name or something)
         
+        
+        # I am not sure what to add for chk and type here
         new_field_data.append((fd.seq,fd.opt,fd_chk_source,fd.name,fd_type_source))
         
         final=[]
@@ -473,19 +514,15 @@ def build_post_init_str(fieldData,Err,cname,element_checker):
                     val=tuple(val)
                     #check each element in the sequence
                     for x in val: 
-                        (_, xp) = element_checker(cname, fieldName, ty, chk, opt, x)
+                        (_, xp) = element_checker(cname, name, ty, chk, opt, x)
                         vals.append(xp)
                     valsp = tuple(vals)
                     object.__setattr__(self, name, valsp)
                     
             if opt:
-                if not (val is None and opt) and not fd.chk: (I know I need to replace fd.chk)
+                if not (val is None and opt) and not chk: 
                     raise badCheck
                     
-            
-                
-            
-                
             
     """
     
@@ -1108,7 +1145,6 @@ def ADT(
         raise TypeError("module is None")
     return mod
 
-
 def create_module_from_file(file_path, module_name):
     with open(file_path, 'r') as file:
         code = file.read()
@@ -1116,7 +1152,10 @@ def create_module_from_file(file_path, module_name):
     spec = importlib.util.spec_from_loader(module_name, loader=None)
     if (spec is not None):
         module = importlib.util.module_from_spec(spec)
-        exec(code, module.__dict__)
+        exec(code, module.__dict__) #executes the code within modules namespace
+        
+        #This line adds the newly created module (module) to sys.modules, making it importable by its name (module_name). 
+        # This step ensures that subsequent attempts to import the module will find it in the module cache.
         sys.modules[module_name] = module
 
         return module
@@ -1126,7 +1165,7 @@ def create_module_from_file(file_path, module_name):
 
     
     
-# generate_module_content("dataclass_test_str")
+
     # mod = _build_classes(asdl_ast, env, memoize=memoize, slots=slots, visitor=visitor)
     # # cache values in case we might want them
     # setattr(mod, "_ast", asdl_ast)  # noqa: B010
