@@ -482,110 +482,79 @@ def addImports(fieldData,Err,cname,element_checker):
 
 def build_post_init_str(fieldData,Err,cname,element_checker):
     """Build string version of post init function"""
-    #field Data string version
-    
-    #now I am confused. Is the fieldData the string version that i created in build_dc_test?
-    
-    thingsToImport= []
-    new_field_data=[]
+    final=[]
     for fd in fieldData:
         fd_type= fd.ty 
+        val= fd.name
+        if fd.seq:
+            new= f"""
+                    val= {val}
+                    tyname = ty.__name__
+                    if isinstance(val,Iterable):
+                        val=tuple(val)
+                        #check each element in the sequence
+                        for x in val: 
+                            if singleType is not None:
+                                try: 
+                                    #what do I do here
+                                    x=getattr(cname,tyname)(x)
+                                
+                                    vals.append(x)
+                                except BaseException:
+                                    raise badElem
+                            if not (val is None and opt) and not chk: 
+                                raise badCheck
+                        valsp = tuple(vals)
+                        object.__setattr__(self, name, valsp)
+                    """
+            final.append(new)
+        elif fd.opt:
+            new= f"""
+                val= {val}
+                tyname = ty.__name__
+                convert=False
+                
+                try:
+                    x=getattr(cname,tyname)(val)
+                    convert=True
+                    object.__setattr__(self, name, x)
+                except BaseException:
+                    raise badElem
+              """
+            final.append(new)
+              
+        else:
+            pass
+    conc_str= '\n'.join(final)
+    def __post_init__(self):
+        return conc_str
         
-        #write a list of imports and call that first in ADT to be assigned to generated file (look at stub for a guide)
-        
-        #get source name and then figure out how to import to generated 
-        #keep a list of imports needed
-        #function object has __qualname__
-        
-        # I first need to turn type and chk into modules I think
-        # Can I 1. Get source code, 2. save source code to file 3. turn that file to a module, 4. get module import statement, 5. add that import statement to generated file 
-       
-       #1/2.get and save source code in imports.py
-        # import_type_source= save_type_source_to_file(fd_type,"imports.py") # do I need to save the source somewhere
-        
-        # # 3. Turn file to module 
-        # new_module= create_module_from_file("imports.py","typeMod")
-        
-        # #4. get import statement 
-        # import_name_type= get_import_statement(new_module)
-        # thingsToImport.append(import_name_type) 
-        
-        qual_name=fd_type.__qualname__
-        qual_name_chk=fd.chk.__qualname__
-        thingsToImport.append(f"import {qual_name}")
-        thingsToImport.append(f"import {qual_name_chk}")
-        
-        #make this a separate function 
-        
-        
-        # import_chk= save_type_source_to_file(fd.chk,"imports.py") # do I need to save the source somewhere 
-        
-        # #I think I need to add this as an import at the top of the file somehow 
-        # import_name_chk= get_import_statement(fd.chk) 
-        # thingsToImport.append(import_name_type)
-        # thingsToImport.append(import_name_chk)
         
         
         
-        # #now it knows what these are, but you need to convert these to strings (qualify name or something)
-        
-        #now that i import the chk and ty do i just put them regularly here?
-        new_field_data.append((fd.seq,fd.opt,fd.chk,fd.name,fd.ty))    
-        
-        new_field_str='/n'.join(new_field_data)
+        #make a string that is the same as the post init and concatenate
         #do I need to write this to output before calling the inner function or what
     
     #make sure there is code for the Errors (just put this at the top of the file)
     
-
-
-     
-
-
-    #generate post init for one field and combine 
-    
-    #do I assume ty and chk and opt and name are defined?
-    # for x= get attr in seq case ask about what replaces mod
-    return """
-        def __post_init__(self):
-            val= getattr(self,name)
-            tyname = ty.__name__
-            singleType: Optional[type] = None
-            if seq:
-                if isinstance(val,Iterable):
-                    val=tuple(val)
-                    #check each element in the sequence
-                    for x in val: 
-                        if singleType is not None:
-                            try: 
-                                #what replaces mod? should cname? 
-                                x=getattr(cname,tyname)(x)
-                                vals.append(x)
-                            except BaseException:
-                                raise badElem
-                        if not (val is None and opt) and not chk: 
-                            raise badCheck
-                    valsp = tuple(vals)
-                    object.__setattr__(self, name, valsp)
-                    
-            if opt:     
-                convert=False
-                if singleType is not None:
-                    try:
-                        x=getattr(cname,tyname)(val)
-                        convert=True
-                        object.__setattr__(self, name, x)
-                    except BaseException:
-                        raise badElem
-              
-                else: 
-                    raise badType
-                        
-                #enforce that chk is true          
-                if not (val is None and opt) and not chk: 
-                    raise badCheck      
-            
     """
+    1. Loop through the fields and make sure we important everytthing we need
+    (for now, let's not do this)
+    2. For each field, we generate a string that: acceses the field and based on (seq, opt), decides how to check it
+    2.1. if not seq/not opt, you can do nothing - the idea is later we will check types and run checks
+    2.2. If it is seq, then you must conver to a tuple and write back
+    2.3. If it is optional, it can be none or the type.
+    3. Yay!
+    4. Later, we can deal with adding in the exceptiosn and adding in the calls to check or type that are externally type
+    
+    for x in range(5):
+        arr[x] = x
+        
+    ->
+    arr[0] = 0
+    arr[1] = 1
+    ...
+"""
     
       
        
@@ -596,54 +565,54 @@ def build_post_init_str(fieldData,Err,cname,element_checker):
         
 
 
-def build_post_init(fieldData, Err, cname, element_checker):
-    """Build dataclass post init function."""
+# def build_post_init(fieldData, Err, cname, element_checker):
+#     """Build dataclass post init function."""
     
 
-    def __post_init__(self):
-        for fd in fieldData:
-            seq = fd.seq
-            opt = fd.opt
-            #check called and should be right type (only None if type is none or if its optional)
-            chk = fd.chk
-            fieldName = fd.name
-            ty = fd.ty
-            val = getattr(self, fieldName)
-            actual_type = type(val)
-            # Check the sequence-ness
-            if seq:
-                if isinstance(val, Iterable):
-                    val = tuple(val)
+#     def __post_init__(self):
+#         for fd in fieldData:
+#             seq = fd.seq
+#             opt = fd.opt
+#             #check called and should be right type (only None if type is none or if its optional)
+#             chk = fd.chk
+#             fieldName = fd.name
+#             ty = fd.ty
+#             val = getattr(self, fieldName)
+#             actual_type = type(val)
+#             # Check the sequence-ness
+#             if seq:
+#                 if isinstance(val, Iterable):
+#                     val = tuple(val)
                 
-                else:
-                    raise Err(
-                        """{0}.{1} must be iterable,
-                    but it has type {2}""".format(
-                            cname, fieldName, actual_type
-                        )
-                    )
-                # check the value of each element:
-                vals = []
-                for x in val:
-                    (_, xp) = element_checker(cname, fieldName, ty, chk, opt, x)
-                    vals.append(xp)
-                valsp = tuple(vals)
-                object.__setattr__(self, fieldName, valsp)
-                # https://github.com/python/cpython/blob/bceb197947bbaebb11e01195bdce4f240fdf9332/Lib/dataclasses.py#L565
-                # Validity of this strategy is based on a careful reading
-                # of the dataclass implementation. In particular:
-                # 1. _post_init is called in init
-                # 2. hash is not precomputed before _post_init or cached
-                # 3. frozen is just a promise
-                # Ergo, when we init an object for caching, our hash
-                # is correct even with all of this frozen breaking
-                # nonsense in _post_init.
-            else:
-                (convert, xp) = element_checker(cname, fieldName, ty, chk, opt, val)
-                if convert:
-                    object.__setattr__(self, fieldName, xp)  # GOD I AM SORRY.
+#                 else:
+#                     raise Err(
+#                         """{0}.{1} must be iterable,
+#                     but it has type {2}""".format(
+#                             cname, fieldName, actual_type
+#                         )
+#                     )
+#                 # check the value of each element:
+#                 vals = []
+#                 for x in val:
+#                     (_, xp) = element_checker(cname, fieldName, ty, chk, opt, x)
+#                     vals.append(xp)
+#                 valsp = tuple(vals)
+#                 object.__setattr__(self, fieldName, valsp)
+#                 # https://github.com/python/cpython/blob/bceb197947bbaebb11e01195bdce4f240fdf9332/Lib/dataclasses.py#L565
+#                 # Validity of this strategy is based on a careful reading
+#                 # of the dataclass implementation. In particular:
+#                 # 1. _post_init is called in init
+#                 # 2. hash is not precomputed before _post_init or cached
+#                 # 3. frozen is just a promise
+#                 # Ergo, when we init an object for caching, our hash
+#                 # is correct even with all of this frozen breaking
+#                 # nonsense in _post_init.
+#             else:
+#                 (convert, xp) = element_checker(cname, fieldName, ty, chk, opt, val)
+#                 if convert:
+#                     object.__setattr__(self, fieldName, xp)  # GOD I AM SORRY.
 
-    return __post_init__
+#     return __post_init__
 
 
 
@@ -684,6 +653,7 @@ def _build_classes_test(
     dataclasses=[]
     for name, data in env.constructorData.items():
         dataclasses.append(build_dc_test(data.name,data.sup,data.fields,slots=slots)) #should return a string
+        breakpoint()
             
     all_dataclasses_str="\n".join(dataclasses)
     return all_dataclasses_str
@@ -706,6 +676,11 @@ def build_dc_test(
         (fd.name, fd.ty) if not fd.hasDefault else (fd.name, fd.ty, fieldp(fd.default)) for fd in fieldData
     ]
     fields += extra
+    
+    for field in field_data:
+        #check if fd.seq is true (if it is then make an Iterable type)
+        #check if fd.opt is true (and if it is then type is Optional[Type])
+        
     #make a string that outputs the corresponding dataclass @dataclass /n class name 
    
     field_strings = []
@@ -714,6 +689,7 @@ def build_dc_test(
             name, typ = field_tuple
             # If no specific type is defined, use 'typing.Any'
             typ_str = "'typing.Any'" if typ is None else typ.__name__
+            breakpoint()
             field_strings.append(f"\t  {name}: {typ_str}")
             
         else:
@@ -721,6 +697,7 @@ def build_dc_test(
             # If no specific type is defined, use 'typing.Any'
             typ_str = "'typing.Any'" if typ is None else typ.__name__
             # Format the string with the field instance and type
+            breakpoint()
             field_strings.append(f"\t  {name}: {typ_str} = {field_instance.default}({typ_str})")
     # Concatenate field strings with newline character
     fields_string = "\n".join(field_strings)
@@ -1156,6 +1133,9 @@ def ADT(
         egraphableTypes=egraphableTypes,
         options=options,
     )
+    
+    classes= env.superTypes
+    #need to create an abc class for each supertype
     if memoize is True:
         memoize = set(env.constructorData.keys())
     elif memoize is False:
