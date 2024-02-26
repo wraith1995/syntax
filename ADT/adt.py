@@ -14,6 +14,8 @@ from itertools import chain
 from types import ModuleType
 import importlib.util
 import os
+import logging
+import tempfile
 from typing import (
     Any,
     Callable,
@@ -34,6 +36,8 @@ try:
     from snake_egg._internal import PyVar  # type: ignore
 except ImportError:
     PyVar = None
+
+logger = logging.getLogger(__name__)
 
 defaultsTy = Mapping[Union[str, type, Tuple[str, str], Tuple[str, type]], Any]
 
@@ -340,10 +344,22 @@ class ADTEnv:
     
     def generateImportsAndErrors(self):
         """Generate the Imports and Errors for an ADT"""
+        
+    def generateStubSimplified(self):
+        stub_commands = [
+            "from dataclasses import dataclass",
+            "import abc",
+            "import typing",
+            "from typing import Any, Union",
+            "from ADT import stamp",
+        ]
+        str_version= '\n'.join(stub_commands)
+        return str_version
 
     def generateStub(self) -> str:
         """Generate stub file for an ADT."""
         stub_commands = [
+            "from dataclasses import dataclass",
             "import abc",
             "import typing",
             "from typing import Any, Union",
@@ -452,6 +468,16 @@ def get_import_statement(obj):
         module_path = inspect.getfile(module)
         module_name = os.path.splitext(os.path.basename(module_path))[0]
         return f"from {module_name} import {obj.__name__}"
+    
+def addImports(fieldData,Err,cname,element_checker):
+    imp=[]
+    for fd in fieldData:
+        imp.append(f"import {fd.ty.__qualname__}")
+        imp.append(f"import {fd.chk.__qualname__}")
+    strImp='\n'.join(imp)
+    return strImp
+        
+    
 
 
 def build_post_init_str(fieldData,Err,cname,element_checker):
@@ -460,8 +486,8 @@ def build_post_init_str(fieldData,Err,cname,element_checker):
     
     #now I am confused. Is the fieldData the string version that i created in build_dc_test?
     
-    new_field_data= []
-    thingsToImport=[]
+    thingsToImport= []
+    new_field_data=[]
     for fd in fieldData:
         fd_type= fd.ty 
         
@@ -475,54 +501,89 @@ def build_post_init_str(fieldData,Err,cname,element_checker):
         # Can I 1. Get source code, 2. save source code to file 3. turn that file to a module, 4. get module import statement, 5. add that import statement to generated file 
        
        #1/2.get and save source code in imports.py
-        import_type_source= save_type_source_to_file(fd_type,"imports.py") # do I need to save the source somewhere
+        # import_type_source= save_type_source_to_file(fd_type,"imports.py") # do I need to save the source somewhere
         
-        # 3. Turn file to module 
-        new_module= create_module_from_file("imports.py","typeMod")
+        # # 3. Turn file to module 
+        # new_module= create_module_from_file("imports.py","typeMod")
         
-        #4. get import statement 
-        import_name_type= get_import_statement(new_module)
-        thingsToImport.append(import_name_type) 
+        # #4. get import statement 
+        # import_name_type= get_import_statement(new_module)
+        # thingsToImport.append(import_name_type) 
         
+        qual_name=fd_type.__qualname__
+        qual_name_chk=fd.chk.__qualname__
+        thingsToImport.append(f"import {qual_name}")
+        thingsToImport.append(f"import {qual_name_chk}")
         
-        import_chk= save_type_source_to_file(fd.chk,"imports.py") # do I need to save the source somewhere 
-        
-        #I think I need to add this as an import at the top of the file somehow 
-        import_name_chk= get_import_statement(fd.chk) 
-        thingsToImport.append(import_name_type)
-        thingsToImport.append(import_name_chk)
-        
+        #make this a separate function 
         
         
-        #now it knows what these are, but you need to convert these to strings (qualify name or something)
+        # import_chk= save_type_source_to_file(fd.chk,"imports.py") # do I need to save the source somewhere 
+        
+        # #I think I need to add this as an import at the top of the file somehow 
+        # import_name_chk= get_import_statement(fd.chk) 
+        # thingsToImport.append(import_name_type)
+        # thingsToImport.append(import_name_chk)
         
         
-        # I am not sure what to add for chk and type here
-        new_field_data.append((fd.seq,fd.opt,fd_chk_source,fd.name,fd_type_source))
         
-        final=[]
+        # #now it knows what these are, but you need to convert these to strings (qualify name or something)
         
+        #now that i import the chk and ty do i just put them regularly here?
+        new_field_data.append((fd.seq,fd.opt,fd.chk,fd.name,fd.ty))    
+        
+        new_field_str='/n'.join(new_field_data)
+        #do I need to write this to output before calling the inner function or what
     
     #make sure there is code for the Errors (just put this at the top of the file)
     
+
+
+     
+
+
     #generate post init for one field and combine 
+    
+    #do I assume ty and chk and opt and name are defined?
+    # for x= get attr in seq case ask about what replaces mod
     return """
         def __post_init__(self):
             val= getattr(self,name)
+            tyname = ty.__name__
+            singleType: Optional[type] = None
             if seq:
                 if isinstance(val,Iterable):
                     val=tuple(val)
                     #check each element in the sequence
                     for x in val: 
-                        (_, xp) = element_checker(cname, name, ty, chk, opt, x)
-                        vals.append(xp)
+                        if singleType is not None:
+                            try: 
+                                #what replaces mod? should cname? 
+                                x=getattr(cname,tyname)(x)
+                                vals.append(x)
+                            except BaseException:
+                                raise badElem
+                        if not (val is None and opt) and not chk: 
+                            raise badCheck
                     valsp = tuple(vals)
                     object.__setattr__(self, name, valsp)
                     
-            if opt:
+            if opt:     
+                convert=False
+                if singleType is not None:
+                    try:
+                        x=getattr(cname,tyname)(val)
+                        convert=True
+                        object.__setattr__(self, name, x)
+                    except BaseException:
+                        raise badElem
+              
+                else: 
+                    raise badType
+                        
+                #enforce that chk is true          
                 if not (val is None and opt) and not chk: 
-                    raise badCheck
-                    
+                    raise badCheck      
             
     """
     
@@ -623,11 +684,11 @@ def _build_classes_test(
     dataclasses=[]
     for name, data in env.constructorData.items():
         dataclasses.append(build_dc_test(data.name,data.sup,data.fields,slots=slots)) #should return a string
-        
+            
     all_dataclasses_str="\n".join(dataclasses)
     return all_dataclasses_str
     
-
+from yapf.yapflib.yapf_api import FormatCode
 def build_dc_test(
     cname: str,
     parent: type,
@@ -638,14 +699,13 @@ def build_dc_test(
         assert isinstance(tmp, Field)
         return tmp
 
-    bf = field(default=("___" + cname + "__"), init=False, repr=False)
+    bf = field(default=("___" + cname + "__"), init=False, repr=False) #dataclass field 
     assert isinstance(bf, Field)
     extra: List[Tuple[str, Type[Any], Field]] = [("___" + cname + "__", str, bf)]
     fields: List[Union[Tuple[str, Type[Any], Field], Tuple[str, Type[Any]]]] = [
         (fd.name, fd.ty) if not fd.hasDefault else (fd.name, fd.ty, fieldp(fd.default)) for fd in fieldData
     ]
     fields += extra
-    
     #make a string that outputs the corresponding dataclass @dataclass /n class name 
    
     field_strings = []
@@ -654,22 +714,23 @@ def build_dc_test(
             name, typ = field_tuple
             # If no specific type is defined, use 'typing.Any'
             typ_str = "'typing.Any'" if typ is None else typ.__name__
-            field_strings.append(f"{name}: {typ_str}")
+            field_strings.append(f"\t  {name}: {typ_str}")
+            
         else:
             name, typ, field_instance = field_tuple
             # If no specific type is defined, use 'typing.Any'
             typ_str = "'typing.Any'" if typ is None else typ.__name__
             # Format the string with the field instance and type
-            field_strings.append(f"{name}: {typ_str} = {field_instance.default} ({field_instance.ty.__name__})")
-
+            field_strings.append(f"\t  {name}: {typ_str} = {field_instance.default}({typ_str})")
     # Concatenate field strings with newline character
     fields_string = "\n".join(field_strings)
-        
-    
     # do I need to get source code for parent?
-    dataclass_string=f" @dataclass(frozen={True},slots={slots}) \n class {cname} ({parent}) \n {fields_string}"
-    return dataclass_string
-   
+    dataclass_string=f"@dataclass(frozen={True},slots={slots}) \nclass {cname}({parent.__name__}): \n {fields_string}"
+    formatted_code=FormatCode(dataclass_string)
+    
+    final=formatted_code[0]
+    return final
+
     
 def build_function_category_methods(fieldData, env, Err):
     """Build methods to treat functions as functions as sets."""
@@ -904,40 +965,17 @@ def build_element_check(mod, Err, env, cname):
     ):
         badType, badSeq, badElem, badCheck = build_local_adt_errors(Err, x, cname, fieldName, targetType, opt)
 
-        earlyAble = env.isInternalProduct(targetType)
         tyname = targetType.__name__
         singleType: Optional[type] = None
-        if earlyAble:
-            minArgs = env.constructorData[tyname].minArgs
-            maxArgs = env.constructorData[tyname].maxArgs
-            if minArgs == 1:
-                sf = env.constructorData[tyname].minSatisfy[0]
-                singleType = sf.ty  # list[sf.ty] if sf.seq else sf.ty
-        else:
-            minArgs = sys.maxsize
-            maxArgs = sys.maxsize
+      
+     
+
         convert = False
         if x is None and opt:
             return (False, None)
         if True:
-            if not earlyAble:
-                raise badType
-            else:
-                if isinstance(x, Sequence):
-                    if minArgs <= len(x) <= maxArgs:
-                        try:
-                            x = getattr(mod, tyname)(*x)
-                            convert = True
-                        except BaseException:
-                            raise badSeq
-                elif isinstance(x, Mapping):
-                    if minArgs <= len(x) <= maxArgs:
-                        try:
-                            x = getattr(mod, tyname)(**x)
-                            convert = True
-                        except BaseException:
-                            raise badSeq
-                elif singleType is not None:
+          
+                if singleType is not None:
                     # CHECK: How does opt interact with this case?
                     # CHECK: How does this interact with seq case?
                     try:
@@ -945,9 +983,9 @@ def build_element_check(mod, Err, env, cname):
                         convert = True
                     except BaseException:
                         raise badElem
-                elif x is None and opt:
+                elif x is None and opt: # case where it is optional
                     pass
-                else:
+                else: #something has gone wrong with the typing 
                     raise badType
         else:
             pass
@@ -1129,21 +1167,37 @@ def ADT(
     
     all_dataclasses_str= _build_classes_test(env,slots=slots)
     #make the name something you can parametrize
-    stub= env.generateStub()
-    
-    with open("dataclass_test_str.py",'w') as f:
-        f.write(stub)
-    
+    stub= env.generateStubSimplified()
 
-    with open("dataclass_test_str.py", 'w') as f:
-        f.write(all_dataclasses_str)
+    
+    # with open("dataclass_test_str.py",'w') as f:
+    #    f.write(stub)
+    tempFile = tempfile.NamedTemporaryFile("w", suffix=".py", delete=False)
+    logging.info("Writing to {0}".format(tempFile.name))
+    with tempFile as t:
+        t.write(stub)
+        t.write('\n')
+        t.write(all_dataclasses_str)
+    
+    logging.info("Wrote to {0}".format(tempFile.name))
+    filePath = tempFile.name
+    spec = importlib.util.spec_from_file_location(asdl_ast.name, filePath)
+    assert spec is not None
+    file = importlib.util.module_from_spec(spec)
+    assert file is not None
+    assert spec.loader is not None
+    spec.loader.exec_module(file)
+    return file
+
+    # with open("dataclass_test_str.py", 'w') as f:
+    #     f.write(all_dataclasses_str)
         
-    print("MAKES IT HERE")
+    # print("MAKES IT HERE")
         
-    mod=create_module_from_file("dataclass_test_str.py","dataclass_test_str")
-    if(mod is None):
-        raise TypeError("module is None")
-    return mod
+    # mod=create_module_from_file("dataclass_test_str.py","dataclass_test_str")
+    # if(mod is None):
+    #     raise TypeError("module is None")
+    # return mod
 
 def create_module_from_file(file_path, module_name):
     with open(file_path, 'r') as file:
