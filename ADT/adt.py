@@ -486,22 +486,19 @@ def build_post_init_str(fieldData,Err,cname,element_checker):
     for fd in fieldData:
         fd_type= fd.ty 
         val= fd.name
+        tyname=fd.ty.__name__
         if fd.seq:
             new= f"""
                     val= {val}
-                    tyname = ty.__name__
+                    tyname = {tyname}
                     if isinstance(val,Iterable):
                         val=tuple(val)
                         #check each element in the sequence
                         for x in val: 
-                            if singleType is not None:
-                                try: 
-                                    #what do I do here
-                                    x=getattr(cname,tyname)(x)
-                                
-                                    vals.append(x)
-                                except BaseException:
-                                    raise badElem
+                            try: 
+                                vals.append(x)
+                            except BaseException:
+                                raise badElem
                             if not (val is None and opt) and not chk: 
                                 raise badCheck
                         valsp = tuple(vals)
@@ -511,12 +508,8 @@ def build_post_init_str(fieldData,Err,cname,element_checker):
         elif fd.opt:
             new= f"""
                 val= {val}
-                tyname = ty.__name__
-                convert=False
-                
+                tyname = {tyname}                
                 try:
-                    x=getattr(cname,tyname)(val)
-                    convert=True
                     object.__setattr__(self, name, x)
                 except BaseException:
                     raise badElem
