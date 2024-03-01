@@ -72,6 +72,7 @@ defaultOpts = ADTOptions(
 )
 
 
+
 class ADTCreationError(Exception):
     """Base exception for errors in creating an ADT."""
 
@@ -97,7 +98,18 @@ class _ProdBase(_AsdlAdtBase):
 class _SumBase(_AsdlAdtBase):
     pass
 
+#or am i supposed to put Sym and pred in this class
+class Sym(ABC):
+    @abstractmethod
+    def __init__(self):
+        pass
 
+class pred(ABC):
+    @abstractmethod
+    def __init__(self):
+        pass
+    
+    
 class _AbstractAbstractVisitor(ABC):
     @abstractmethod
     def __getitem__(self, t: Tuple[type, type]) -> Callable:
@@ -521,10 +533,8 @@ def build_post_init_str(fieldData,Err,cname,element_checker):
     conc_str= '\n'.join(final)
     def __post_init__(self):
         return conc_str
-        
-        
-        
-        
+
+
         #make a string that is the same as the post init and concatenate
         #do I need to write this to output before calling the inner function or what
     
@@ -539,24 +549,7 @@ def build_post_init_str(fieldData,Err,cname,element_checker):
     2.3. If it is optional, it can be none or the type.
     3. Yay!
     4. Later, we can deal with adding in the exceptiosn and adding in the calls to check or type that are externally type
-    
-    for x in range(5):
-        arr[x] = x
-        
-    ->
-    arr[0] = 0
-    arr[1] = 1
-    ...
-"""
-    
-      
-       
-            
-        
-        
-        
-        
-
+    """
 
 # def build_post_init(fieldData, Err, cname, element_checker):
 #     """Build dataclass post init function."""
@@ -607,11 +600,6 @@ def build_post_init_str(fieldData,Err,cname,element_checker):
 
 #     return __post_init__
 
-
-
-
-
-
 def build_visitor_accept(fieldData):
     """Build a simple visitor acceptor."""
 
@@ -646,7 +634,7 @@ def _build_classes_test(
     dataclasses=[]
     for name, data in env.constructorData.items():
         dataclasses.append(build_dc_test(data.name,data.sup,data.fields,slots=slots)) #should return a string
-        breakpoint()
+  
             
     all_dataclasses_str="\n".join(dataclasses)
     return all_dataclasses_str
@@ -665,12 +653,29 @@ def build_dc_test(
     bf = field(default=("___" + cname + "__"), init=False, repr=False) #dataclass field 
     assert isinstance(bf, Field)
     extra: List[Tuple[str, Type[Any], Field]] = [("___" + cname + "__", str, bf)]
-    fields: List[Union[Tuple[str, Type[Any], Field], Tuple[str, Type[Any]]]] = [
-        (fd.name, fd.ty) if not fd.hasDefault else (fd.name, fd.ty, fieldp(fd.default)) for fd in fieldData
-    ]
-    fields += extra
+    # fields: List[Union[Tuple[str, Type[Any], Field], Tuple[str, Type[Any]]]] = [
+    #     (fd.name, fd.ty) if not fd.hasDefault else (fd.name, fd.ty, fieldp(fd.default)) for fd in fieldData
+    # ]
     
-    for field in field_data:
+    #fields: List[Union[Tuple[str, Type[Any], Field], Tuple[str, Type[Any]]]] = []
+    fields=[]
+    for fd in fieldData:
+        if not fd.hasDefault:
+            if fd.seq:
+                fields.append((fd.name,Iterable))
+            elif fd.opt:
+                fields.append((fd.name,Optional[fd.ty]))
+            else: 
+                fields.append((fd.name,fd.ty))
+        else:
+            if fd.seq:
+                fields.append((fd.name,Iterable,fieldp(fd.default)))
+            elif fd.opt:
+                fields.append((fd.name,Optional[fd.ty],fieldp(fd.default)))
+            else: 
+                fields.append((fd.name,fd.ty,fieldp(fd.default)))
+            
+    fields += extra
         #check if fd.seq is true (if it is then make an Iterable type)
         #check if fd.opt is true (and if it is then type is Optional[Type])
         
@@ -682,7 +687,7 @@ def build_dc_test(
             name, typ = field_tuple
             # If no specific type is defined, use 'typing.Any'
             typ_str = "'typing.Any'" if typ is None else typ.__name__
-            breakpoint()
+          
             field_strings.append(f"\t  {name}: {typ_str}")
             
         else:
@@ -690,7 +695,7 @@ def build_dc_test(
             # If no specific type is defined, use 'typing.Any'
             typ_str = "'typing.Any'" if typ is None else typ.__name__
             # Format the string with the field instance and type
-            breakpoint()
+
             field_strings.append(f"\t  {name}: {typ_str} = {field_instance.default}({typ_str})")
     # Concatenate field strings with newline character
     fields_string = "\n".join(field_strings)
