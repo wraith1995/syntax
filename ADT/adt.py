@@ -3,19 +3,24 @@
 Adopted from https://raw.githubusercontent.com/gilbo/atl/master/ATL/adt.py
 And again from https://github.com/ChezJrk/asdl/blob/master/src/asdl_adt/adt.py.
 """
+from asyncio import run_coroutine_threadsafe
 import inspect  # noqa: F401
+import json
 import sys
 from abc import ABC, abstractmethod
 from collections import OrderedDict
-from collections.abc import Collection, Iterable, Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
+from collections.abc import Iterable as ABCIterable
 from copy import copy, deepcopy
 from dataclasses import Field, field, make_dataclass, replace
 from itertools import chain
+from tkinter.tix import Form
 from types import ModuleType
 import importlib.util
 import os
 import logging
 import tempfile
+from yapf.yapflib.yapf_api import FormatCode
 from typing import (
     Any,
     Callable,
@@ -43,6 +48,31 @@ defaultsTy = Mapping[Union[str, type, Tuple[str, str], Tuple[str, type]], Any]
 
 
 indent = "    "
+#based on test_ueq grammar: Should I add this to test_ueq_grammar?
+# class TypeChecker:
+#     def __init__(self, adt):
+#         self.adt = adt
+
+#     def check(self, node):
+#         node_type = type(node)
+#         if node_type == Symbol:
+#             return True
+#         elif node_type == Const:
+#             return isinstance(node.val, int)
+#         elif node_type == Var:
+#             return isinstance(node.name, str)
+#         elif node_type == Add:
+#             return self.check(node.lhs) and self.check(node.rhs)
+#         elif node_type == Scale:
+#             return isinstance(node.coeff, int) and self.check(node.e)
+#         elif node_type == Eq:
+#             return self.check(node.lhs) and self.check(node.rhs)
+#         elif node_type == Conj or node_type == Disj:
+#             return all(self.check(pred) for pred in node.preds)
+#         elif node_type == Cases:
+#             return isinstance(node.case_var, Symbol) and all(self.check(pred) for pred in node.cases)
+#         else:
+#             return False
 
 
 class ADTOptions(NamedTuple):
@@ -99,16 +129,16 @@ class _SumBase(_AsdlAdtBase):
     pass
 
 #or am i supposed to put Sym and pred in this class
-class Sym(ABC):
-    @abstractmethod
-    def __init__(self):
-        pass
+# class Sym(ABC):
+#     @abstractmethod
+#     def __init__(self):
+#         pass
 
-class pred(ABC):
-    @abstractmethod
-    def __init__(self):
-        pass
-    
+# class pred(ABC):
+#     @abstractmethod
+#     def __init__(self):
+#         pass
+#create a function that just creates a few of these questions in the output
     
 class _AbstractAbstractVisitor(ABC):
     @abstractmethod
@@ -148,32 +178,32 @@ class field_data(NamedTuple):
     name: str
     seq: bool
     opt: bool
-    ty: type
+    ty: str
     chk: Callable
     hasDefault: bool
     default: Any
 
 
-def fdtypestr(fd: field_data, env) -> str:
-    """Represent a field type as a string."""
-    tyname = fd.ty.__name__
-    if env.isInterallyDefined(fd.ty):
-        tyname += "_type"
-    if fd.seq:
-        return "typing.Sequence[{0}]".format(tyname)
-    elif fd.opt:
-        return "typing.Optional[{0}]".format(tyname)
-    else:
-        return tyname
+# def fdtypestr(fd: field_data, env) -> str:
+#     """Represent a field type as a string."""
+#     tyname = fd.ty
+#     if env.isInterallyDefined(fd.ty):
+#         tyname += "_type"
+#     if fd.seq:
+#         return "typing.Sequence[{0}]".format(tyname)
+#     elif fd.opt:
+#         return "typing.Optional[{0}]".format(tyname)
+#     else:
+#         return tyname
 
 
-def fdinitstr(fd: field_data, env) -> str:
-    """Represent type signature of an init."""
-    tystr = fdtypestr(fd, env)
-    start = "{0}:{1}".format(fd.name, tystr)
-    if fd.hasDefault:
-        start += " = ..."
-    return start
+# def fdinitstr(fd: field_data, env) -> str:
+#     """Represent type signature of an init."""
+#     tystr = fdtypestr(fd, env)
+#     start = "{0}:{1}".format(fd.name, tystr)
+#     if fd.hasDefault:
+#         start += " = ..."
+#     return start
 
 
 def build_field_cdata(
@@ -213,7 +243,7 @@ def build_field_cdata(
         f.name,
         f.seq,
         f.opt,
-        ty,
+        ty.__name__,
         checks[str(f.type)] if str(f.type) in checks else dumb,
         hasDefault,
         default,
@@ -223,7 +253,7 @@ def build_field_cdata(
 class constructor_data(NamedTuple):
     """Represent a constructor."""
 
-    sup: type
+    sup: str
     fields: list[field_data]
     name: str
     minArgs: int
@@ -310,12 +340,13 @@ class ADTEnv:
             maxArgs = len(fieldData)
             minSet = list(filter(lambda x: not x.hasDefault, fieldData))
             minArgs = len(minSet)
-            self.constructorData[name] = constructor_data(ty, fieldData, name, maxArgs, minArgs, minSet)
+            self.constructorData[name] = constructor_data(ty.__name__, fieldData, name, maxArgs, minArgs, minSet)
         self.allTypeNames = set().union(*[set(v) for v in self.typeCollections.values()])
 
-    def isInterallyDefined(self, typ: type) -> bool:
+    def isInterallyDefined(self, typ: str) -> bool:
         """Determine if a type is internally defined."""
-        return issubclass(typ, self.sumClass) or issubclass(typ, self.prodClass)
+        
+        return issubclass(eval(typ), self.sumClass) or issubclass(eval(typ), self.prodClass)
 
     def isInternalSum(self, typ: type) -> bool:
         """Determine if a type is an internally defined sum type."""
@@ -325,34 +356,6 @@ class ADTEnv:
         """Determine if a type is an internally defined product type."""
         return issubclass(typ, self.prodClass)
 
-    def generateClassStub(self, name: str) -> List[str]:
-        """Generate stub file snippets for a class."""
-        data = []
-        cdata = self.constructorData[name]
-        constantCheck = len(cdata.fields) == 0
-        if issubclass(cdata.sup, self.sumClass):
-            superName = "_" + cdata.sup.__name__
-        else:
-            superName = "object"
-
-        data.append("class {0}({1}):".format(name if not constantCheck else "_" + name, superName))
-        for fd in cdata.fields:
-            tystr = fdtypestr(fd, self)
-            data.append(indent + "{0}: {1}".format(fd.name, tystr))
-        data.append(
-            indent
-            + "__match_args__ = ({0})".format(", ".join(['"' + fd.name + '"' for fd in cdata.fields]))  # noqa: W503
-        )
-        inits = ["self"] + [fdinitstr(fd, self) for fd in cdata.fields]
-        initstr = ", ".join(inits)
-        data.append(indent + "def __init__({0}) -> None: ...".format(initstr))
-        if len(cdata.fields) == 0:
-            data.append("\n")
-            data.append("{0}: _{0} = _{0}()".format(name))
-            data.append("\n")
-        # if self.options.loop:
-        #     data.append(indent + "def loop(self, internal: bool = True) -> typing.Iterator[Any]: ...\n")
-        return data
     
     def generateImportsAndErrors(self):
         """Generate the Imports and Errors for an ADT"""
@@ -364,6 +367,12 @@ class ADTEnv:
             "import typing",
             "from typing import Any, Union",
             "from ADT import stamp",
+            "from abc import ABC, abstractmethod",
+            "import collections.abc",
+            "from collections.abc import Collection, Mapping, Sequence",
+            "from collections.abc import Iterable",
+            "import collections",
+            "from weakref import WeakValueDictionary"
         ]
         str_version= '\n'.join(stub_commands)
         return str_version
@@ -489,17 +498,40 @@ def addImports(fieldData,Err,cname,element_checker):
     strImp='\n'.join(imp)
     return strImp
         
-    
+def badElem(cname,fieldname,targetType,currentType,currentVal,Err):
+    badElemErr= Err(
+    """{0}.{1} does not have type {2},
+    and instead has type {3};
+    we tried to convert the value, {4}, because it was a
+    sequence or mapping,
+    but this failed.""".format(
+            cname, fieldname, targetType, currentType, currentVal
+        )
+    )
+    return badElemErr
+
+def badCheck(cname,fieldname,x,targetType,Err):
+    badCheck = Err(
+        """{0}.{1} is not valid because
+    {2} failed the
+    check for type {3}""".format(
+            cname, fieldname, x, targetType
+        )
+    )
+    return badCheck
 
 
-def build_post_init_str(fieldData,Err,cname,element_checker):
+def build_post_init_str(fieldData,Err:type,cname,element_checker):
     """Build string version of post init function"""
     final=[]
     for fd in fieldData:
         fd_type= fd.ty 
+        fieldname=fd.name
         val= fd.name
         tyname=fd.ty.__name__
+        
         if fd.seq:
+           
             new= f"""
                     val= {val}
                     tyname = {tyname}
@@ -510,9 +542,11 @@ def build_post_init_str(fieldData,Err,cname,element_checker):
                             try: 
                                 vals.append(x)
                             except BaseException:
-                                raise badElem
+                                badElemErr= badElem({cname},{fieldname},{fd_type},{type}(x),x,{Err})
+                                raise badElemErr
                             if not (val is None and opt) and not chk: 
-                                raise badCheck
+                                badCheckErr= badCheck({cname},{fieldname},x,{fd_type},{Err})
+                                raise badCheckErr
                         valsp = tuple(vals)
                         object.__setattr__(self, name, valsp)
                     """
@@ -522,9 +556,9 @@ def build_post_init_str(fieldData,Err,cname,element_checker):
                 val= {val}
                 tyname = {tyname}                
                 try:
-                    object.__setattr__(self, name, x)
+                    object.__setattr__(self, name, val)
                 except BaseException:
-                    raise badElem
+                    badElemErr= badElem({cname},{fieldname},{fd_type},{type}(val),val,{Err})
               """
             final.append(new)
               
@@ -551,54 +585,7 @@ def build_post_init_str(fieldData,Err,cname,element_checker):
     4. Later, we can deal with adding in the exceptiosn and adding in the calls to check or type that are externally type
     """
 
-# def build_post_init(fieldData, Err, cname, element_checker):
-#     """Build dataclass post init function."""
-    
 
-#     def __post_init__(self):
-#         for fd in fieldData:
-#             seq = fd.seq
-#             opt = fd.opt
-#             #check called and should be right type (only None if type is none or if its optional)
-#             chk = fd.chk
-#             fieldName = fd.name
-#             ty = fd.ty
-#             val = getattr(self, fieldName)
-#             actual_type = type(val)
-#             # Check the sequence-ness
-#             if seq:
-#                 if isinstance(val, Iterable):
-#                     val = tuple(val)
-                
-#                 else:
-#                     raise Err(
-#                         """{0}.{1} must be iterable,
-#                     but it has type {2}""".format(
-#                             cname, fieldName, actual_type
-#                         )
-#                     )
-#                 # check the value of each element:
-#                 vals = []
-#                 for x in val:
-#                     (_, xp) = element_checker(cname, fieldName, ty, chk, opt, x)
-#                     vals.append(xp)
-#                 valsp = tuple(vals)
-#                 object.__setattr__(self, fieldName, valsp)
-#                 # https://github.com/python/cpython/blob/bceb197947bbaebb11e01195bdce4f240fdf9332/Lib/dataclasses.py#L565
-#                 # Validity of this strategy is based on a careful reading
-#                 # of the dataclass implementation. In particular:
-#                 # 1. _post_init is called in init
-#                 # 2. hash is not precomputed before _post_init or cached
-#                 # 3. frozen is just a promise
-#                 # Ergo, when we init an object for caching, our hash
-#                 # is correct even with all of this frozen breaking
-#                 # nonsense in _post_init.
-#             else:
-#                 (convert, xp) = element_checker(cname, fieldName, ty, chk, opt, val)
-#                 if convert:
-#                     object.__setattr__(self, fieldName, xp)  # GOD I AM SORRY.
-
-#     return __post_init__
 
 def build_visitor_accept(fieldData):
     """Build a simple visitor acceptor."""
@@ -632,19 +619,291 @@ def _build_classes_test(
     slots: bool = False,
 ):
     dataclasses=[]
+    abc_classes=[]
+    sup={}
+    names= {}
+    my_dict={}
+    dataclass_string=f"classdict_Sym:WeakValueDictionary=WeakValueDictionary({my_dict}) \n@dataclass(frozen={True}) \nclass Sym: \n name:str"
+    formatted_code=FormatCode(dataclass_string)
+    abc_classes.append(formatted_code[0])
     for name, data in env.constructorData.items():
-        dataclasses.append(build_dc_test(data.name,data.sup,data.fields,slots=slots)) #should return a string
+        # breakpoint()
+
+        if name:
+            # if name not in names:
+            #     names[name]=1
+            #     abc_classes.append( 
+            #     f"""class {name}(ABC):
+            #         @abstractmethod
+            #         def __init__(self):
+            #             pass """ )
+            if data.sup:
+                if data.sup not in sup and data.sup not in names and data.sup!=name:
+                    sup[data.sup]=1;
+                    abc_classes.append( 
+                        f"""class {data.sup}(ABC):
+                            @abstractmethod
+                            def __init__(self):
+                                pass """ )
+        #breakpoint()
+                    
+
+        dataclasses.append(build_dc_test(env,name,data.sup,data.fields,slots=slots)) #should return a string
   
-            
+    abc_classes_str= "\n".join(abc_classes)
+    formatted_code_str=FormatCode(abc_classes_str)
+    # dataclasses= [formatted_code]+dataclasses
     all_dataclasses_str="\n".join(dataclasses)
-    return all_dataclasses_str
+    formatted_code_dataclass= FormatCode(all_dataclasses_str)
+    formatted_code_dataclass_final=formatted_code_dataclass[0]
+    formatted_code_str_final= formatted_code_str[0]
     
-from yapf.yapflib.yapf_api import FormatCode
+    return formatted_code_str_final+formatted_code_dataclass_final
+
+#Do I need to make this recursive? This would be easier using visitor pattern imo (ask about this)
+def  generate_post_init_class(cname):
+    post_init=[]
+    if cname == "problem":
+        post_init.append(f"\tdef __post_init__(self):")
+        return f"""
+def __post_init__(self):
+    assert isinstance(self.holes,Iterable)
+    for x in self.holes:
+        if not isinstance(x,Sym):
+            assert isinstance(x,str)
+            xp= Sym(x)
+            assert isinstance(xp,Sym) 
+            
+    assert isinstance(self.knowns,Iterable)
+    for x in self.holes:
+        if not isinstance(x,Sym):
+            assert isinstance(x,str)
+            xp= Sym(x)
+            assert isinstance(xp,Sym) 
+    assert isinstance(self.preds,Iterable)
+    for x in self.preds:
+        if isinstance(x,Conj) or isinstance(x,Disj):
+            x.__post_init__()
+                
+        if isinstance(x,Cases):
+            assert(isinstance(x.case_var,Sym))
+            x.cases.__post_init__()
+        
+        if isinstance(x,Eq):
+            assert(isinstance(x.lhs,expr))
+            x.lhs.__post_init__()
+            assert(isinstance(x.rhs,expr))
+            x.rhs.__post_init__()
+            
+        if not isinstance(x,pred):
+            xp= pred(x)
+            assert isinstance(xp,pred) 
+    
+    """
+    if cname=="Conj" or cname=="Disj":
+        return f"""
+def __post_init__(self):
+    assert isinstance(self.preds,Iterable)
+    for x in self.preds:
+        if isinstance(x,Conj) or isinstance(x,Disj):
+            x.__post_init__()
+                
+        if isinstance(x,Cases):
+            assert(isinstance(x.case_var,Sym))
+            x.cases.__post_init__()
+        
+            
+        if isinstance(x,Eq):
+            assert(isinstance(x.lhs,expr))
+            x.lhs.__post_init__()
+            assert(isinstance(x.rhs,expr))
+            x.rhs.__post_init__()
+            
+        if not isinstance(x,pred):
+            
+            xp= pred(x)
+            assert isinstance(xp,pred) 
+    """
+    
+    if cname== "Cases":
+        return f"""
+def __post_init__(self):
+    if not isinstance(self.case_var,Sym):
+        assert(isinstance(self.case_var,str))
+        xp= Sym(case_var)
+        assert isinstance(xp,case_var)
+    assert isinstance(self.cases,Iterable)
+    for x in self.cases:
+        if isinstance(x,Conj) or isinstance(x,Disj):
+            x.__post_init__()
+                
+        if isinstance(x,Cases):
+            assert(isinstance(x.case_var,Sym))
+            x.cases.__post_init__()
+        
+            
+        if isinstance(x,Eq):
+            assert(isinstance(x.lhs,expr))
+            x.lhs.__post_init__()
+            assert(isinstance(x.rhs,expr))
+            x.rhs.__post_init__()
+            
+        if not isinstance(x,pred):
+    
+            xp= pred(x)
+            assert isinstance(xp,pred)
+             
+    """
+    
+    if cname=="Eq":
+        return f"""
+def __post_init__(self):
+    if isinstance(self.lhs,Const):
+        assert(isinstance(self.lhs.val,int))
+        
+    if isinstance(self.lhs,Var):
+        assert(isinstance(self.lhs.name,Sym))
+        
+    if isinstance(self.lhs,Add):
+        self.lhs.lhs.__post_init__()
+        self.lhs.rhs.__post_init__()
+        
+    if isinstance(self.lhs,Scale):
+        assert(isinstance(self.lhs.coeff,int))
+        self.lhs.e.__post_init__()
+        
+    if isinstance(self.rhs,Const):
+        assert(isinstance(self.rhs.val,int))
+        
+    if isinstance(self.rhs,Var):
+        assert(isinstance(self.rhs.name,Sym))
+        
+    if isinstance(self.rhs,Add):
+        self.rhs.lhs.__post_init__()
+        self.rhs.rhs.__post_init__()
+        
+    if isinstance(self.rhs,Scale):
+        assert(isinstance(self.rhs.coeff,int))
+        self.rhs.e.__post_init__()
+        
+    
+    if not isinstance(self.lhs,expr):
+        xp= expr(self.lhs)
+        assert isinstance(xp,case_var)
+        
+    if not isinstance(self.rhs,expr):
+        xp= expr(self.rhs)
+        assert isinstance(xp,case_var)
+            
+    """
+    
+    if cname== "Const":
+        # post_init.append(f"\tdef __post_init__(self):")
+        # post_init.append(f"\t\tassert(isinstance(self.val,int))")
+        # return "\n".join(post_init)
+        return f"""
+def __post_init__(self): 
+    assert(isinstance(self.val,int))
+        
+        """
+    if cname== "Var":
+        return f"""
+def __post_init__(self): 
+    assert(isinstance(self.name,Sym))
+        """
+        
+    if cname== "Add":
+        return f"""
+def __post_init__(self):
+    if isinstance(self.lhs,Const):
+        assert(isinstance(self.lhs.val,int))
+        
+    if isinstance(self.lhs,Var):
+        assert(isinstance(self.lhs.name,Sym))
+        
+    if isinstance(self.lhs,Add):
+        self.lhs.lhs.__post_init__()
+        self.lhs.rhs.__post_init__()
+        
+    if isinstance(self.lhs,Scale):
+        assert(isinstance(self.lhs.coeff,int))
+        self.lhs.e.__post_init__()
+        
+    if isinstance(self.rhs,Const):
+        assert(isinstance(self.rhs.val,int))
+        
+    if isinstance(self.rhs,Var):
+        assert(isinstance(self.rhs.name,Sym))
+        
+    if isinstance(self.rhs,Add):
+        self.rhs.lhs.__post_init__()
+        self.rhs.rhs.__post_init__()
+        
+    if isinstance(self.rhs,Scale):
+        assert(isinstance(self.rhs.coeff,int))
+        self.rhs.e.__post_init__()
+        
+    
+    if not isinstance(self.lhs,expr):
+        xp= expr(self.lhs)
+        assert isinstance(xp,case_var)
+        
+    if not isinstance(self.rhs,expr):
+        xp= expr(self.rhs)
+        assert isinstance(xp,case_var)
+            
+    """
+    
+    if cname=="Scale":
+         return f"""
+def __post_init__(self):
+    assert(isinstance(self.coeff,int))
+    assert(isinstance(self.e,(Const,Var,Add,Scale)))
+    
+    if isinstance(self.e,Const):
+        assert(isinstance(self.e.val,int))
+        
+    if isinstance(self.e,Var):
+        assert(isinstance(self.e.name,Sym))
+        
+    if isinstance(self.e,Add):
+        self.e.lhs.__post_init__()
+        self.e.rhs.__post_init__()
+        
+    if isinstance(self.e,Scale):
+        assert(isinstance(self.e.coeff,int))
+        self.e.e.__post_init__()
+        """
+        
+# def fdtypestr(fd: field_data, env) -> str:
+#     """Represent a field type as a string."""
+#     tyname = fd.ty
+#     if env.isInterallyDefined(fd.ty):
+#         tyname += "_type"
+#     if fd.seq:
+#         return "typing.Sequence[{0}]".format(tyname)
+#     elif fd.opt:
+#         return "typing.Optional[{0}]".format(tyname)
+#     else:
+#         return tyname
+        
+        
 def build_dc_test(
+    env:ADTEnv,
+    # Err:type,
     cname: str,
-    parent: type,
+    parent: str,
     fieldData: list[field_data],
-    slots: bool = True):
+    slots: bool = True,
+    ):
+    
+    Err= type("Error",(Exception,),{})
+    
+    post_init= generate_post_init_class(cname)
+    formatted_post_init= FormatCode(post_init)
+    
+    #go thru field data, and ask if type is defined within the system: if it's not, we call getsource and append text to top of file
+    #check if defined within the system by env.isInternallyDefined
     def fieldp(x) -> Field:
         tmp = field(default_factory=x) if callable(x) else field(default=x)
         assert isinstance(tmp, Field)
@@ -660,18 +919,34 @@ def build_dc_test(
     #fields: List[Union[Tuple[str, Type[Any], Field], Tuple[str, Type[Any]]]] = []
     fields=[]
     for fd in fieldData:
+        #breakpoint()
+        typ=fd.ty
         if not fd.hasDefault:
             if fd.seq:
-                fields.append((fd.name,Iterable))
+                if typ:
+                    # breakpoint()
+                    fields.append((fd.name, f"Iterable[{typ}]"))
+                else:
+                    fields.append((fd.name, None))
+        
+            # Check if the field is optional
             elif fd.opt:
-                fields.append((fd.name,Optional[fd.ty]))
-            else: 
-                fields.append((fd.name,fd.ty))
+                if typ:
+                    fields.append((fd.name, f"typing.Optional[{typ}]"))
+                else:
+                    fields.append((fd.name, None))
+            
+            else:
+                if typ:
+                    fields.append((fd.name, typ))
+                else:
+                    fields.append((fd.name, None))
+           
         else:
             if fd.seq:
-                fields.append((fd.name,Iterable,fieldp(fd.default)))
+                fields.append((fd.name,f"Iterable[{typ}]",fieldp(fd.default)))
             elif fd.opt:
-                fields.append((fd.name,Optional[fd.ty],fieldp(fd.default)))
+                fields.append((fd.name,f"typing.Optional[{typ}]",fieldp(fd.default)))
             else: 
                 fields.append((fd.name,fd.ty,fieldp(fd.default)))
             
@@ -686,25 +961,60 @@ def build_dc_test(
         if len(field_tuple) == 2:
             name, typ = field_tuple
             # If no specific type is defined, use 'typing.Any'
-            typ_str = "'typing.Any'" if typ is None else typ.__name__
-          
+            typ_str = "'typing.Any'" if typ is None else typ
+            if typ_str=="Iterable":
+                typ_str=f"{typ}"
+
+            # field_strings.append(f"\t  {name}: {typ_str}")
+            
             field_strings.append(f"\t  {name}: {typ_str}")
+            # else: #in this case get source code, and append it to the start of the file
+            #     field_strings.append(f"\t  {name}:typing.Any")
             
         else:
             name, typ, field_instance = field_tuple
             # If no specific type is defined, use 'typing.Any'
-            typ_str = "'typing.Any'" if typ is None else typ.__name__
+            typ_str = "'typing.Any'" if typ is None else typ
+            pass
             # Format the string with the field instance and type
-
-            field_strings.append(f"\t  {name}: {typ_str} = {field_instance.default}({typ_str})")
+            # {field_instance.default}
+            # field_strings.append(f"\t  {name}: {typ_str} = {field_instance.default}({typ_str})")
     # Concatenate field strings with newline character
     fields_string = "\n".join(field_strings)
     # do I need to get source code for parent?
-    dataclass_string=f"@dataclass(frozen={True},slots={slots}) \nclass {cname}({parent.__name__}): \n {fields_string}"
-    formatted_code=FormatCode(dataclass_string)
+    my_dict={}
+    # create post init 
+    # inner_post_init=""
+    # if cname=="problem":
+        
+    # # post_init= f"""
+    # # def __post_init__(self):
+        
     
-    final=formatted_code[0]
-    return final
+    # # """
+    if parent!=cname:
+        
+            dataclass_string=f"classdict_{cname}:WeakValueDictionary=WeakValueDictionary({my_dict}) \n@dataclass(frozen={True},slots={slots}) \nclass {cname}({parent}): \n {fields_string} \n{post_init}"
+#         dataclass_string = f"""
+# @dataclass(frozen=True, slots={slots})
+# class {cname}({parent}):
+# {fields_string}
+#         {post_init}
+# """
+        #formatted_code=FormatCode(dataclass_string)
+        #final=formatted_code[0]
+    else:
+        dataclass_string=f"classdict_{cname}:WeakValueDictionary=WeakValueDictionary({my_dict}) \n@dataclass(frozen={True},slots={slots}) \nclass {cname}: \n {fields_string} \n {post_init}"
+#         dataclass_string=f"""
+# @dataclass(frozen=True, slots={slots})
+# class {cname}:
+# {fields_string}
+#         {post_init}
+# """
+        #formatted_code=FormatCode(dataclass_string)
+        #final=formatted_code[0]
+        
+    return dataclass_string
 
     
 def build_function_category_methods(fieldData, env, Err):
@@ -924,7 +1234,96 @@ def build_element_iteration_methods(Err, fieldData, env):
 
     return __iter__, map
 
+def build_err_str(mod,Err,env,cname):
+    def element_checker(
+        cname: str,
+        fieldName: str,
+        targetType: type,
+        chk: Callable,
+        opt: bool,
+        x: Any,
+    ):
+        #Do I need mod?
+        str_to_ret=[]
+        
+        xt = type(x)
+        badType = Err(
+            """{0}.{1} does not have type
+        {2} because a value {3}
+        has type {4} and opt={5}""".format(
+                cname, fieldName, targetType, x, xt, opt
+            )
+        )
+        badCheck = Err(
+            """{0}.{1} is not valid because
+        {2} failed the
+        check for type {3}""".format(
+                cname, fieldName, x, targetType
+            )
+        )
+        badSeq = Err(
+            """{0}.{1} does not have type {2},
+        and instead has type {3};
+        we tried to convert the value, {4}, because it was a
+        sequence or mapping,
+        but this failed.""".format(
+                cname, fieldName, targetType, xt, x
+            )
+        )
+        badElem = Err(
+            """{0}.{1} does not have type {2},
+        and instead has type {3};
+        we tried to convert the value, {4}, because it was the single
+        correct type,
+        but this failed.""".format(
+                cname, fieldName, targetType, xt, x
+            )
+        )
+        
+        str_to_ret.append(str(badCheck))
+        str_to_ret.append(str(badElem))
+        str_to_ret.append(str(badSeq))
+        str_to_ret.append(str(badType))
+        #only add the errors to the top of the file 
+        str_to_ret.append(f"tyname={targetType.__name__}")
+        
+        #NOTE: ask if I can convert type callable to string just by putting brackets around it 
+        #NOTE: DO I even need anything other than decl of badErr
+        res=f"""
+        singleType: Optional[type] = None
+      
+        convert = False
+        if {x} is None and {opt}:
+            return (False, None)
+        if True:
+                if singleType is not None:
+                    # CHECK: How does opt interact with this case?
+                    # CHECK: How does this interact with seq case?
+                    try:
+                        x = getattr(mod, tyname)({x})
+                        convert = True
+                    except BaseException:
+                        raise badElem
+                elif {x} is None and {opt}: # case where it is optional
+                    pass
+                else: #something has gone wrong with the typing 
+                    raise badType
+        else:
+            pass
 
+        if not ({x} is None and {opt}) and not {chk(x)}:
+            raise badCheck
+        else:
+            return (convert, {x}) """
+            
+        res_formatted=FormatCode(res)
+        str_to_ret.append(res_formatted[0])
+        final_str= '\n'.join(str_to_ret)
+        formatted_final_str=FormatCode(final_str)
+        return formatted_final_str[0]
+        
+        
+        
 def build_element_check(mod, Err, env, cname):
     """Add method to check arguments and convert as needed."""
     
@@ -993,18 +1392,20 @@ def build_new(memoize, classdict):
 
     return __new__
 
+#just need to call eval on generated string to get dict back
 def build_new_str(memoize,classdict):
     """Represent new function as a string """
-    return """
+    classdict_str=repr(classdict)
+    return f"""
     def __new__(cls, *args, **kwargs):
             obj = object.__new__(cls)
             cls.__init__(obj, *args, **kwargs)
             # build the data class to check if it exists.
             # Hope this is gc'd quickly.
-            if memoize and (obj in classdict):
-                return classdict[(obj)]
-            elif memoize:
-                classdict[obj] = obj
+            if {memoize} and (obj in {classdict_str}):
+                return {classdict_str}[(obj)]
+            elif {memoize}:
+                {classdict_str}[obj] = obj
                 return obj
             else:
                 return obj
@@ -1132,6 +1533,7 @@ def ADT(
         options=options,
     )
     
+    
     classes= env.superTypes
     #need to create an abc class for each supertype
     if memoize is True:
@@ -1146,6 +1548,13 @@ def ADT(
     all_dataclasses_str= _build_classes_test(env,slots=slots)
     #make the name something you can parametrize
     stub= env.generateStubSimplified()
+    
+    badCheckSource=FormatCode(inspect.getsource(badCheck))
+    badElemSource=FormatCode(inspect.getsource(badElem))
+    
+ 
+    
+    # err_code= build_err_str(mod,Err,env,cname)
 
     
     # with open("dataclass_test_str.py",'w') as f:
@@ -1155,6 +1564,11 @@ def ADT(
     with tempFile as t:
         t.write(stub)
         t.write('\n')
+        t.write(badCheckSource[0])
+        t.write('\n')
+        t.write(badElemSource[0])
+        t.write('\n')
+   
         t.write(all_dataclasses_str)
     
     logging.info("Wrote to {0}".format(tempFile.name))
