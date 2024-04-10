@@ -288,6 +288,8 @@ class ADTEnv:
         self.egraphableTypes: Union[bool, Set[str]] = egraphableTypes
         self.old = adsl_adt
         self.typeCollections: Dict[str, List[str]] = dict()
+        
+        #do the inspect for external types HERE
 
         def fieldValidator(flds, name, names=set()) -> List[str]:
             for fld in flds:
@@ -337,6 +339,7 @@ class ADTEnv:
                 )
                 for f in fields
             ]
+            #breakpoint()
             maxArgs = len(fieldData)
             minSet = list(filter(lambda x: not x.hasDefault, fieldData))
             minArgs = len(minSet)
@@ -542,7 +545,7 @@ def build_post_init_str(fieldData,Err:type,cname,element_checker):
                             try: 
                                 vals.append(x)
                             except BaseException:
-                                badElemErr= badElem({cname},{fieldname},{fd_type},{type}(x),x,{Err})
+                                badElemErr= badElem({cname},{fieldname},{fd_type},type(x),x,{Err})
                                 raise badElemErr
                             if not (val is None and opt) and not chk: 
                                 badCheckErr= badCheck({cname},{fieldname},x,{fd_type},{Err})
@@ -558,7 +561,7 @@ def build_post_init_str(fieldData,Err:type,cname,element_checker):
                 try:
                     object.__setattr__(self, name, val)
                 except BaseException:
-                    badElemErr= badElem({cname},{fieldname},{fd_type},{type}(val),val,{Err})
+                    badElemErr= badElem({cname},{fieldname},{fd_type},type(val),val,{Err})
               """
             final.append(new)
               
@@ -627,16 +630,7 @@ def _build_classes_test(
     formatted_code=FormatCode(dataclass_string)
     abc_classes.append(formatted_code[0])
     for name, data in env.constructorData.items():
-        # breakpoint()
-
         if name:
-            # if name not in names:
-            #     names[name]=1
-            #     abc_classes.append( 
-            #     f"""class {name}(ABC):
-            #         @abstractmethod
-            #         def __init__(self):
-            #             pass """ )
             if data.sup:
                 if data.sup not in sup and data.sup not in names and data.sup!=name:
                     sup[data.sup]=1;
@@ -645,22 +639,44 @@ def _build_classes_test(
                             @abstractmethod
                             def __init__(self):
                                 pass """ )
-        #breakpoint()
+
                     
 
         dataclasses.append(build_dc_test(env,name,data.sup,data.fields,slots=slots)) #should return a string
   
     abc_classes_str= "\n".join(abc_classes)
     formatted_code_str=FormatCode(abc_classes_str)
-    # dataclasses= [formatted_code]+dataclasses
+
     all_dataclasses_str="\n".join(dataclasses)
-    formatted_code_dataclass= FormatCode(all_dataclasses_str)
-    formatted_code_dataclass_final=formatted_code_dataclass[0]
+
     formatted_code_str_final= formatted_code_str[0]
     
-    return formatted_code_str_final+formatted_code_dataclass_final
+    return formatted_code_str_final+all_dataclasses_str
 
-#Do I need to make this recursive? This would be easier using visitor pattern imo (ask about this)
+#there were no cases where fd.opt was True 
+def generate_post_init_from_field(fieldData: list[field_data]):
+    post_init=[]
+    post_init.append(f"\tdef __post_init__(self):") 
+    for fd in fieldData:
+        if not fd.opt and not fd.seq:
+            tyname=fd.ty
+            post_init.append(f"\t \tassert isinstance(self.{fd.name},{tyname})")
+        if fd.seq:
+            tyname=fd.ty
+            post_init.append(f"\t\tassert isinstance(self.{fd.name},Iterable)")
+            post_init.append(f"\t\tfor x in self.{fd.name}:")
+            post_init.append(f"\t\t\tassert isinstance(x,{fd.ty})")
+        if fd.opt:
+            tyname=fd.ty
+            post_init.append(f"\t\tassert {fd.name} is None or isinstance(self.{fd.name},{tyname})")
+            
+            
+    post_init_str= "\n".join(post_init)
+    return post_init_str
+            
+            
+
+            
 def  generate_post_init_class(cname):
     post_init=[]
     if cname == "problem":
@@ -874,18 +890,7 @@ def __post_init__(self):
         assert(isinstance(self.e.coeff,int))
         self.e.e.__post_init__()
         """
-        
-# def fdtypestr(fd: field_data, env) -> str:
-#     """Represent a field type as a string."""
-#     tyname = fd.ty
-#     if env.isInterallyDefined(fd.ty):
-#         tyname += "_type"
-#     if fd.seq:
-#         return "typing.Sequence[{0}]".format(tyname)
-#     elif fd.opt:
-#         return "typing.Optional[{0}]".format(tyname)
-#     else:
-#         return tyname
+    
         
         
 def build_dc_test(
@@ -899,11 +904,6 @@ def build_dc_test(
     
     Err= type("Error",(Exception,),{})
     
-    post_init= generate_post_init_class(cname)
-    formatted_post_init= FormatCode(post_init)
-    
-    #go thru field data, and ask if type is defined within the system: if it's not, we call getsource and append text to top of file
-    #check if defined within the system by env.isInternallyDefined
     def fieldp(x) -> Field:
         tmp = field(default_factory=x) if callable(x) else field(default=x)
         assert isinstance(tmp, Field)
@@ -912,14 +912,10 @@ def build_dc_test(
     bf = field(default=("___" + cname + "__"), init=False, repr=False) #dataclass field 
     assert isinstance(bf, Field)
     extra: List[Tuple[str, Type[Any], Field]] = [("___" + cname + "__", str, bf)]
-    # fields: List[Union[Tuple[str, Type[Any], Field], Tuple[str, Type[Any]]]] = [
-    #     (fd.name, fd.ty) if not fd.hasDefault else (fd.name, fd.ty, fieldp(fd.default)) for fd in fieldData
-    # ]
-    
-    #fields: List[Union[Tuple[str, Type[Any], Field], Tuple[str, Type[Any]]]] = []
     fields=[]
+    post_init= generate_post_init_from_field(fieldData)
+    #breakpoint()
     for fd in fieldData:
-        #breakpoint()
         typ=fd.ty
         if not fd.hasDefault:
             if fd.seq:
@@ -951,10 +947,6 @@ def build_dc_test(
                 fields.append((fd.name,fd.ty,fieldp(fd.default)))
             
     fields += extra
-        #check if fd.seq is true (if it is then make an Iterable type)
-        #check if fd.opt is true (and if it is then type is Optional[Type])
-        
-    #make a string that outputs the corresponding dataclass @dataclass /n class name 
    
     field_strings = []
     for field_tuple in fields:
@@ -963,38 +955,23 @@ def build_dc_test(
             # If no specific type is defined, use 'typing.Any'
             typ_str = "'typing.Any'" if typ is None else typ
             if typ_str=="Iterable":
-                typ_str=f"{typ}"
+                typ_str=f"{typ}"            
+            field_strings.append(f"\t{name}: {typ_str}")
 
-            # field_strings.append(f"\t  {name}: {typ_str}")
-            
-            field_strings.append(f"\t  {name}: {typ_str}")
-            # else: #in this case get source code, and append it to the start of the file
-            #     field_strings.append(f"\t  {name}:typing.Any")
             
         else:
             name, typ, field_instance = field_tuple
             # If no specific type is defined, use 'typing.Any'
             typ_str = "'typing.Any'" if typ is None else typ
             pass
-            # Format the string with the field instance and type
-            # {field_instance.default}
-            # field_strings.append(f"\t  {name}: {typ_str} = {field_instance.default}({typ_str})")
-    # Concatenate field strings with newline character
+
     fields_string = "\n".join(field_strings)
-    # do I need to get source code for parent?
     my_dict={}
-    # create post init 
-    # inner_post_init=""
-    # if cname=="problem":
-        
-    # # post_init= f"""
-    # # def __post_init__(self):
-        
-    
-    # # """
+  
     if parent!=cname:
         
-            dataclass_string=f"classdict_{cname}:WeakValueDictionary=WeakValueDictionary({my_dict}) \n@dataclass(frozen={True},slots={slots}) \nclass {cname}({parent}): \n {fields_string} \n{post_init}"
+            dataclass_string=f"classdict_{cname}:WeakValueDictionary=WeakValueDictionary({my_dict}) \n@dataclass(frozen={True},slots={slots}) \nclass {cname}({parent}): \n{fields_string} \n{post_init} "
+            
 #         dataclass_string = f"""
 # @dataclass(frozen=True, slots={slots})
 # class {cname}({parent}):
@@ -1004,17 +981,20 @@ def build_dc_test(
         #formatted_code=FormatCode(dataclass_string)
         #final=formatted_code[0]
     else:
-        dataclass_string=f"classdict_{cname}:WeakValueDictionary=WeakValueDictionary({my_dict}) \n@dataclass(frozen={True},slots={slots}) \nclass {cname}: \n {fields_string} \n {post_init}"
+        dataclass_string=f"classdict_{cname}:WeakValueDictionary=WeakValueDictionary({my_dict}) \n@dataclass(frozen={True},slots={slots}) \nclass {cname}: \n{fields_string} \n{post_init}"
+        #breakpoint()
 #         dataclass_string=f"""
 # @dataclass(frozen=True, slots={slots})
 # class {cname}:
 # {fields_string}
 #         {post_init}
 # """
-        #formatted_code=FormatCode(dataclass_string)
-        #final=formatted_code[0]
+    #breakpoint()
+    formatted_code=FormatCode(dataclass_string)
+    final=formatted_code[0]
+    
         
-    return dataclass_string
+    return final
 
     
 def build_function_category_methods(fieldData, env, Err):
@@ -1387,25 +1367,25 @@ def build_new(memoize, classdict):
         elif memoize:
             classdict[obj] = obj
             return obj
-        else:
+        else: 
             return obj
-
     return __new__
 
 #just need to call eval on generated string to get dict back
 def build_new_str(memoize,classdict):
     """Represent new function as a string """
-    classdict_str=repr(classdict)
     return f"""
     def __new__(cls, *args, **kwargs):
             obj = object.__new__(cls)
             cls.__init__(obj, *args, **kwargs)
             # build the data class to check if it exists.
             # Hope this is gc'd quickly.
-            if {memoize} and (obj in {classdict_str}):
-                return {classdict_str}[(obj)]
+            # class dict is already named based of which class it is
+            # change new func such that it adds classdict with the correct name associated with the correct class
+            if {memoize} and (obj in {classdict}):
+                return {classdict}[(obj)]
             elif {memoize}:
-                {classdict_str}[obj] = obj
+                {classdict}[obj] = obj
                 return obj
             else:
                 return obj
