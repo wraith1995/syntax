@@ -49,31 +49,7 @@ defaultsTy = Mapping[Union[str, type, Tuple[str, str], Tuple[str, type]], Any]
 
 
 indent = "    "
-#based on test_ueq grammar: Should I add this to test_ueq_grammar?
-# class TypeChecker:
-#     def __init__(self, adt):
-#         self.adt = adt
 
-#     def check(self, node):
-#         node_type = type(node)
-#         if node_type == Symbol:
-#             return True
-#         elif node_type == Const:
-#             return isinstance(node.val, int)
-#         elif node_type == Var:
-#             return isinstance(node.name, str)
-#         elif node_type == Add:
-#             return self.check(node.lhs) and self.check(node.rhs)
-#         elif node_type == Scale:
-#             return isinstance(node.coeff, int) and self.check(node.e)
-#         elif node_type == Eq:
-#             return self.check(node.lhs) and self.check(node.rhs)
-#         elif node_type == Conj or node_type == Disj:
-#             return all(self.check(pred) for pred in node.preds)
-#         elif node_type == Cases:
-#             return isinstance(node.case_var, Symbol) and all(self.check(pred) for pred in node.cases)
-#         else:
-#             return False
 
 
 class ADTOptions(NamedTuple):
@@ -688,18 +664,26 @@ def _build_classes_test(
     
     
     #first, need to get imports from this file.
+    mult_options= {}
     for name, data in env.constructorData.items():
         #breakpoint()
         add_field=False
         if name:
             #breakpoint()
             if data.sup:
-                if data.sup not in sup and data.sup not in names: #CASE WHERE AUTOMATIC TYPE CONVERSION WORKS?
+                # if data.sup not in sup and data.sup not in names: #CASE WHERE AUTOMATIC TYPE CONVERSION WORKS?
+                    
+                    
+                if data.name not in visit_mapping:
                     add_field=True
+                    if data.sup!=name:
+                        mult_options[data.sup]=True
+                    
                     visit_mapping[data.name]={}
+                    #breakpoint()
                 if data.sup not in sup and data.sup not in names and data.sup!=name:
                     
-                    visit_fields.add(data.sup)
+                    #visit_fields.add(data.sup)
                     sup[data.sup]=1;
                     abc_classes.append( 
                         f"""class {data.sup}(ABC):
@@ -712,13 +696,13 @@ def _build_classes_test(
             if add_field:
                 to_add_to=visit_mapping[data.name]
                 if fd.seq:
-                    to_add_to[fd.name]=[True]
+                    to_add_to[fd.name]=True
                 else: 
-                    to_add_to[fd.name]=[False]
+                    to_add_to[fd.name]=False
                 visit_mapping[data.name]=to_add_to
                     
                     
-                breakpoint()
+                #breakpoint()
                 
                 
                 # to_add=visitor[data.sup]
@@ -786,24 +770,32 @@ spec_{unique_id}.loader.exec_module(count_{unique_id})""")
                         external_types.append(source_code)
                     
         
-        dataclasses.append(build_dc_test(env,name,data.sup,data.fields,memoize,checks_to_callname,slots=slots)) #should return a string
+        dataclasses.append(build_dc_test(env,name,data.sup,data.fields,memoize,checks_to_callname,mult_options,slots=slots)) #should return a string
     all_imports_str="\n".join(all_imports) 
     external_types_str="\n".join(external_types)
     
     visitor.append(f"class Visitor:")
+    #breakpoint()
     for cls_name in visit_mapping:
-        field_names= list(visit_mapping[cls_name])
-        assigned_to=f"={cls_name}"
-        field_assignment= ",".join(field_names)+ "assigned_to"
         
-        visitor.append(f"\tdef visit_{cls_name}(self,cls_name):")
+        field_names= list(visit_mapping[cls_name])
+        
+        assigned_to=f"={cls_name}"
+        field_assignment= ",".join(field_names)+ assigned_to
+        
+        visitor.append(f"\tdef visit_{cls_name}(self,{cls_name}):")
         visitor.append(f"\t\t{field_assignment}")
         field_dict=visit_mapping[cls_name]
         for val in field_dict:
             if field_dict[val]==True:
                 visitor.append(f"\t\tfor x in {val}:")
                 visitor.append(f"\t\t\tx.accept(self)")
-            
+            else: 
+                visitor.append(f"\t\t{val}.accept(self)")
+    for sup_mult_options in mult_options:
+        if sup_mult_options not in visit_mapping:
+            visitor.append(f"\tdef visit_{sup_mult_options}(self,{sup_mult_options}):")
+            visitor.append(f"\t\t{sup_mult_options}.accept(self)")
         
     #check_source_str= "\n".join(checks)
   
@@ -811,13 +803,15 @@ spec_{unique_id}.loader.exec_module(count_{unique_id})""")
     formatted_code_str=FormatCode(abc_classes_str)
 
     all_dataclasses_str="\n".join(dataclasses)
+    
+    visitor_str= "\n".join(visitor)
 
     formatted_code_str_final= formatted_code_str[0]
     
-    return [all_imports_str,external_types_str,formatted_code_str_final+all_dataclasses_str]
+    return [all_imports_str,external_types_str,formatted_code_str_final+all_dataclasses_str,visitor_str]
 
 #there were no cases where fd.opt was True 
-def generate_post_init_from_field(fieldData: list[field_data],chk_name):
+def generate_post_init_from_field(fieldData: list[field_data],chk_name,mult_types):
     post_init=[]
     post_init.append(f"\tdef __post_init__(self):") 
     
@@ -827,35 +821,51 @@ def generate_post_init_from_field(fieldData: list[field_data],chk_name):
         #post_init.append(f"\t\tassert {fd.chk}")
         if not fd.opt and not fd.seq:
             tyname=fd.ty
-            post_init.append(f"\t\tif not isinstance(self.{fd.name},{fd.ty}):")
-            post_init.append(f"\t\t\txp= {fd.ty}(self.{fd.name})")
-            post_init.append(f"\t\t\tassert isinstance(xp,{fd.ty})")
-            post_init.append(f"\t\t\tobject.__setattr__(self,self.{fd.name},xp)")
-            post_init.append(f"\t\tassert isinstance(self.{fd.name},{tyname})")
-            post_init.append(f"\t\tassert {chk_name_p}(self.{fd.name})")
+            if fd.ty not in mult_types:
+                post_init.append(f"\t\tif not isinstance(self.{fd.name},{fd.ty}):")
+                post_init.append(f"\t\t\txp= {fd.ty}(self.{fd.name})")
+                post_init.append(f"\t\t\tassert isinstance(xp,{fd.ty})")
+                post_init.append(f"\t\t\tobject.__setattr__(self,self.{fd.name},xp)")
+                post_init.append(f"\t\tassert isinstance(self.{fd.name},{tyname})")
+                post_init.append(f"\t\tassert {chk_name_p}(self.{fd.name})")
+            else: 
+                post_init.append(f"\t\tassert isinstance(self.{fd.name},{fd.ty})")
+                post_init.append(f"\t\tassert {chk_name_p}(self.{fd.name})")
+                
         if fd.seq:
             tyname=fd.ty
             post_init.append(f"\t\tassert isinstance(self.{fd.name},Iterable)")
             post_init.append(f"\t\tvals=[]")
             post_init.append(f"\t\tfor x in self.{fd.name}:")
-            post_init.append(f"\t\t\tif not isinstance(x,{fd.ty}):")
-            post_init.append(f"\t\t\t\txp= {fd.ty}(x)")
-            post_init.append(f"\t\t\t\tassert isinstance(xp,{fd.ty})")
-            post_init.append(f"\t\t\t\tassert {chk_name_p}(xp)")
-            post_init.append(f"\t\t\t\tvals.append(xp)")
-            post_init.append(f"\t\t\telse:")
-            post_init.append(f"\t\t\t\tvals.append(x)")
-            post_init.append(f"\t\t\t\tassert {chk_name_p}(x)")
+            if fd.ty not in mult_types:
+                post_init.append(f"\t\t\tif not isinstance(x,{fd.ty}):")
+                post_init.append(f"\t\t\t\txp= {fd.ty}(x)")
+                post_init.append(f"\t\t\t\tassert isinstance(xp,{fd.ty})")
+                post_init.append(f"\t\t\t\tassert {chk_name_p}(xp)")
+                post_init.append(f"\t\t\t\tvals.append(xp)")
+                post_init.append(f"\t\t\telse:")
+                post_init.append(f"\t\t\t\tvals.append(x)")
+                post_init.append(f"\t\t\t\tassert {chk_name_p}(x)")
+            else:
+                post_init.append(f"\t\t\tassert isinstance(x,{fd.ty})")
+                post_init.append(f"\t\t\tvals.append(x)")
+                post_init.append(f"\t\t\tassert {chk_name_p}(x)")
+            
+           
             post_init.append(f"\t\tvalsp=tuple(vals)")
             post_init.append(f"\t\tobject.__setattr__(self,self.{fd.name},valsp)")
         if fd.opt:
             tyname=fd.ty
-            post_init.append(f"\t\tif not isinstance(self.{fd.name},{fd.ty}):")
-            post_init.append(f"\t\t\txp= {fd.ty}(self.{fd.name})")
-            post_init.append(f"\t\t\tassert isinstance(xp,{fd.ty})")
-            post_init.append(f"\t\t\tobject.__setattr__(self,self.{fd.name},xp)")
-            post_init.append(f"\t\tassert {fd.name} is None or isinstance(self.{fd.name},{tyname})")
-            post_init.append(f"\t\tassert {chk_name_p}(self.{fd.name})")
+            if fd.ty not in mult_types:
+                post_init.append(f"\t\tif not isinstance(self.{fd.name},{fd.ty}):")
+                post_init.append(f"\t\t\txp= {fd.ty}(self.{fd.name})")
+                post_init.append(f"\t\t\tassert isinstance(xp,{fd.ty})")
+                post_init.append(f"\t\t\tobject.__setattr__(self,self.{fd.name},xp)")
+                post_init.append(f"\t\tassert {fd.name} is None or isinstance(self.{fd.name},{tyname})")
+                post_init.append(f"\t\tassert {chk_name_p}(self.{fd.name})")
+            else:
+                post_init.append(f"\t\tassert {fd.name} is None or isinstance(self.{fd.name},{tyname})")
+                post_init.append(f"\t\tassert {chk_name_p}(self.{fd.name})")
             
         
             
@@ -871,7 +881,9 @@ def build_dc_test(
     fieldData: list[field_data],
     memoize: bool,
     checks_to_callname,
+    mult_types,
     slots: bool = True,
+    
     
     ):
     
@@ -886,7 +898,7 @@ def build_dc_test(
     assert isinstance(bf, Field)
     extra: List[Tuple[str, Type[Any], Field]] = [("___" + cname + "__", str, bf)]
     fields=[]
-    post_init= generate_post_init_from_field(fieldData,checks_to_callname)
+    post_init= generate_post_init_from_field(fieldData,checks_to_callname,mult_types)
     new_func= generate_new(memoize,cname)
     
     for fd in fieldData:
@@ -1510,6 +1522,7 @@ def ADT(
         #checks=_build_classes_test(env,memoize,slots=slots)[2]
         external= _build_classes_test(env,memoize,slots=slots)[1]
         imports_source=_build_classes_test(env,memoize,slots=slots)[0]
+        visitor_test=_build_classes_test(env,memoize,slots=slots)[3]
     #make the name something you can parametrize
     stub= env.generateStubSimplified()
     
@@ -1526,6 +1539,8 @@ def ADT(
         t.write(badElemSource[0])
         t.write('\n')
         t.write(external)
+        t.write('\n')
+        t.write(visitor_test)
         t.write('\n')
        
         
