@@ -6,6 +6,7 @@ And again from https://github.com/ChezJrk/asdl/blob/master/src/asdl_adt/adt.py.
 from asyncio import run_coroutine_threadsafe
 import inspect  # noqa: F401
 import json
+import time
 import sys
 from abc import ABC, abstractmethod
 from collections import OrderedDict
@@ -34,13 +35,13 @@ from typing import (
     Union,
 )
 from weakref import WeakValueDictionary
-
+from .chk_functions import dumb
 import asdl  # type: ignore
 from fastcore.all import typedispatch  # type: ignore
-try:
-    from snake_egg._internal import PyVar  # type: ignore
-except ImportError:
-    PyVar = None
+# try:
+#     from snake_egg._internal import PyVar  # type: ignore
+# except ImportError:
+#     PyVar = None
 
 logger = logging.getLogger(__name__)
 
@@ -184,28 +185,6 @@ class field_data(NamedTuple):
     default: Any
 
 
-# def fdtypestr(fd: field_data, env) -> str:
-#     """Represent a field type as a string."""
-#     tyname = fd.ty
-#     if env.isInterallyDefined(fd.ty):
-#         tyname += "_type"
-#     if fd.seq:
-#         return "typing.Sequence[{0}]".format(tyname)
-#     elif fd.opt:
-#         return "typing.Optional[{0}]".format(tyname)
-#     else:
-#         return tyname
-
-
-# def fdinitstr(fd: field_data, env) -> str:
-#     """Represent type signature of an init."""
-#     tystr = fdtypestr(fd, env)
-#     start = "{0}:{1}".format(fd.name, tystr)
-#     if fd.hasDefault:
-#         start += " = ..."
-#     return start
-
-
 def build_field_cdata(
     outerName: str,
     f,
@@ -215,6 +194,7 @@ def build_field_cdata(
     defaults: defaultsTy,
 ) -> field_data:
     """Transform enviroment info to field_data."""
+    #breakpoint()
     if str(f.type) in internalTypes:
         ty = internalTypes[str(f.type)]
     elif str(f.type) in externalTypes:
@@ -238,7 +218,7 @@ def build_field_cdata(
                 default = None
         else:
             hasDefault = False
-    dumb: Callable = lambda _: True
+    #dumb: Callable = lambda _: True
     return field_data(
         f.name,
         f.seq,
@@ -327,7 +307,17 @@ class ADTEnv:
 
             else:
                 raise ADTCreationError("ASDL item not sum nor product.")
+        # all_external_types=[]
         for name, (fields, ty) in self.constructorDataPre.copy().items():
+        #     for ty in self.externalTypes:
+        #         actual= self.externalTypes[ty]
+        #         is_built_in= inspect.getmodule(actual).__name__
+                
+        #         #breakpoint()
+        #         if is_built_in != "builtins":
+        #             source_code=inspect.getsource(actual)
+        #            # breakpoint()
+        #             all_external_types.append(source_code)
             fieldData: list[field_data] = [
                 build_field_cdata(
                     name,
@@ -617,32 +607,205 @@ def build_visitor_accept(fieldData):
 
     return accept
 
+import ast
+
+# def get_imports(file_path):
+#     imports = set()
+#     with open(file_path, 'r') as f:
+#         tree = ast.parse(f.read(), filename=file_path)
+#         for node in ast.walk(tree):
+#             if isinstance(node, ast.Import):
+#                 for alias in node.names:
+#                     imports.add(alias.name)
+#             elif isinstance(node, ast.ImportFrom):
+#                 module_name = node.module
+#                 if module_name is not None:
+#                     imports.add(module_name)
+#     return imports
+
+def get_imports(file_path):
+    imports = []
+    with open(file_path, 'r') as f:
+        tree = ast.parse(f.read(), filename=file_path)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                
+                for alias in node.names:
+                   # breakpoint()
+                    imports.append(f"import {alias.name}")
+            elif isinstance(node, ast.ImportFrom):
+                module_name = node.module
+                if module_name == "chk_functions":
+                    continue
+                if module_name is not None:
+                    imports.append(f"import {module_name}")
+                if node.names:
+                    for alias in node.names:
+                        imports.append(f"from {module_name} import {alias.name}")
+    return imports
+# def find_variable_name(func):
+#     frame = inspect.currentframe()
+#     breakpoint()
+#     while frame:
+#         if func.__code__ is frame.f_locals.get(func.__name__):
+#             return func.__name__
+#         frame = frame.f_back
+#     return None
+
+def find_variable_name(func):
+    frame = inspect.currentframe()
+    while frame:
+        for name, obj in frame.f_locals.items():
+            #breakpoint()
+            if obj is func:
+                return name
+        frame = frame.f_back
+    return None
+
 def _build_classes_test(
     env: ADTEnv,
-    slots: bool = False,
+    memoize: bool,
+    slots: bool = False, 
 ):
+    #breakpoint()
     dataclasses=[]
     abc_classes=[]
     sup={}
     names= {}
-    my_dict={}
-    dataclass_string=f"classdict_Sym:WeakValueDictionary=WeakValueDictionary({my_dict}) \n@dataclass(frozen={True}) \nclass Sym: \n name:str"
-    formatted_code=FormatCode(dataclass_string)
-    abc_classes.append(formatted_code[0])
+    checks_to_callname={}
+    checks_to_imports={}
+    external_types=[]
+    all_imports=[]
+    #for right now, need all of the imports from here. Ask about this tmrw 
+    this_func_file= inspect.getfile(_build_classes_test)
+    adt_imports= get_imports(this_func_file)
+    all_imports=adt_imports
+    visitor=[]
+    #breakpoint()
+    visit_fields=set()
+    
+    visit_mapping= {}
+    
+    
+    #first, need to get imports from this file.
     for name, data in env.constructorData.items():
+        #breakpoint()
+        add_field=False
         if name:
+            #breakpoint()
             if data.sup:
+                if data.sup not in sup and data.sup not in names: #CASE WHERE AUTOMATIC TYPE CONVERSION WORKS?
+                    add_field=True
+                    visit_mapping[data.name]={}
                 if data.sup not in sup and data.sup not in names and data.sup!=name:
+                    
+                    visit_fields.add(data.sup)
                     sup[data.sup]=1;
                     abc_classes.append( 
                         f"""class {data.sup}(ABC):
                             @abstractmethod
                             def __init__(self):
                                 pass """ )
-
+        
+        for fd in data.fields:
+            
+            if add_field:
+                to_add_to=visit_mapping[data.name]
+                if fd.seq:
+                    to_add_to[fd.name]=[True]
+                else: 
+                    to_add_to[fd.name]=[False]
+                visit_mapping[data.name]=to_add_to
                     
-
-        dataclasses.append(build_dc_test(env,name,data.sup,data.fields,slots=slots)) #should return a string
+                    
+                breakpoint()
+                
+                
+                # to_add=visitor[data.sup]
+                # to_add.append(fd.name)
+            if fd.chk in checks_to_callname:
+                continue
+            chk=fd.chk
+            #unique id to hash
+            unique_id= "hi"+str(int(time.time()))
+            #get name as well 
+            test= inspect.getfile(chk)
+            # Step 0: gather all check functions
+            # Step 1: hash and build a dictionary from check function to
+            # Step 1.1: from check function to import machinery string
+            # step 1.2: the actual call function name (importedFile.__name__)
+            # step 2: when we emit imports, we look through this to get all the statements
+            # step 3: when we emit calls to this, we have the dictionary to look up the latter
+            all_imports.append(f"""spec_{unique_id} = importlib.util.spec_from_file_location(\"{unique_id}\", \"{test}\")
+assert spec_{unique_id} is not None
+count_{unique_id} = importlib.util.module_from_spec(spec_{unique_id})
+assert count_{unique_id} is not None
+assert spec_{unique_id}.loader is not None
+spec_{unique_id}.loader.exec_module(count_{unique_id})""")
+            spec = importlib.util.spec_from_file_location(unique_id, test)
+            assert spec is not None
+            # create a hash to make file a unique name
+            count = importlib.util.module_from_spec(spec)
+            #file.dumb (AKA file.(chk.__name__ )would be the right call name)
+            assert count is not None
+            assert spec.loader is not None
+            spec.loader.exec_module(count)
+            #breakpoint()
+            
+            for chk_name,obj in count.__dict__.items():
+                #make sure there is always just one (otherwise make this an array)
+                #seems like the last one in this is always the name we want to call
+                if callable(obj):
+                    #breakpoint()
+                    
+                    checks_to_callname[fd.chk]=f"count_{unique_id}.{chk_name}"
+                    #first, import module
+                    #then, import chk func
+                    # all_imports.append(f'import {count.__name__}')
+                    # all_imports.append(f'from } import {name}')
+            # imports_chk= get_imports(test)
+            # for imp in imports_chk:
+            #     if imp not in all_imports:
+            #         all_imports.append(imp)
+            
+                
+            if fd.ty.lower() in env.externalTypes:
+                actual= env.externalTypes[fd.ty.lower()]
+                is_built_in= inspect.getmodule(actual).__name__
+                
+           
+                if is_built_in != "builtins":
+                    source_code=inspect.getsource(actual)
+                    test= inspect.getfile(actual)
+                    imports= get_imports(test)
+                    for imp in imports:
+                        if imp not in all_imports:
+                            all_imports.append(imp)
+                    
+                    if source_code not in external_types:
+                        external_types.append(source_code)
+                    
+        
+        dataclasses.append(build_dc_test(env,name,data.sup,data.fields,memoize,checks_to_callname,slots=slots)) #should return a string
+    all_imports_str="\n".join(all_imports) 
+    external_types_str="\n".join(external_types)
+    
+    visitor.append(f"class Visitor:")
+    for cls_name in visit_mapping:
+        field_names= list(visit_mapping[cls_name])
+        assigned_to=f"={cls_name}"
+        field_assignment= ",".join(field_names)+ "assigned_to"
+        
+        visitor.append(f"\tdef visit_{cls_name}(self,cls_name):")
+        visitor.append(f"\t\t{field_assignment}")
+        field_dict=visit_mapping[cls_name]
+        for val in field_dict:
+            if field_dict[val]==True:
+                visitor.append(f"\t\tfor x in {val}:")
+                visitor.append(f"\t\t\tx.accept(self)")
+            
+        
+    #check_source_str= "\n".join(checks)
   
     abc_classes_str= "\n".join(abc_classes)
     formatted_code_str=FormatCode(abc_classes_str)
@@ -651,247 +814,54 @@ def _build_classes_test(
 
     formatted_code_str_final= formatted_code_str[0]
     
-    return formatted_code_str_final+all_dataclasses_str
+    return [all_imports_str,external_types_str,formatted_code_str_final+all_dataclasses_str]
 
 #there were no cases where fd.opt was True 
-def generate_post_init_from_field(fieldData: list[field_data]):
+def generate_post_init_from_field(fieldData: list[field_data],chk_name):
     post_init=[]
     post_init.append(f"\tdef __post_init__(self):") 
+    
     for fd in fieldData:
+        chk_name_p= chk_name[fd.chk]
+        # post_init.append(f"\t\t{chk_name}()")
+        #post_init.append(f"\t\tassert {fd.chk}")
         if not fd.opt and not fd.seq:
             tyname=fd.ty
-            post_init.append(f"\t \tassert isinstance(self.{fd.name},{tyname})")
+            post_init.append(f"\t\tif not isinstance(self.{fd.name},{fd.ty}):")
+            post_init.append(f"\t\t\txp= {fd.ty}(self.{fd.name})")
+            post_init.append(f"\t\t\tassert isinstance(xp,{fd.ty})")
+            post_init.append(f"\t\t\tobject.__setattr__(self,self.{fd.name},xp)")
+            post_init.append(f"\t\tassert isinstance(self.{fd.name},{tyname})")
+            post_init.append(f"\t\tassert {chk_name_p}(self.{fd.name})")
         if fd.seq:
             tyname=fd.ty
             post_init.append(f"\t\tassert isinstance(self.{fd.name},Iterable)")
+            post_init.append(f"\t\tvals=[]")
             post_init.append(f"\t\tfor x in self.{fd.name}:")
-            post_init.append(f"\t\t\tassert isinstance(x,{fd.ty})")
+            post_init.append(f"\t\t\tif not isinstance(x,{fd.ty}):")
+            post_init.append(f"\t\t\t\txp= {fd.ty}(x)")
+            post_init.append(f"\t\t\t\tassert isinstance(xp,{fd.ty})")
+            post_init.append(f"\t\t\t\tassert {chk_name_p}(xp)")
+            post_init.append(f"\t\t\t\tvals.append(xp)")
+            post_init.append(f"\t\t\telse:")
+            post_init.append(f"\t\t\t\tvals.append(x)")
+            post_init.append(f"\t\t\t\tassert {chk_name_p}(x)")
+            post_init.append(f"\t\tvalsp=tuple(vals)")
+            post_init.append(f"\t\tobject.__setattr__(self,self.{fd.name},valsp)")
         if fd.opt:
             tyname=fd.ty
+            post_init.append(f"\t\tif not isinstance(self.{fd.name},{fd.ty}):")
+            post_init.append(f"\t\t\txp= {fd.ty}(self.{fd.name})")
+            post_init.append(f"\t\t\tassert isinstance(xp,{fd.ty})")
+            post_init.append(f"\t\t\tobject.__setattr__(self,self.{fd.name},xp)")
             post_init.append(f"\t\tassert {fd.name} is None or isinstance(self.{fd.name},{tyname})")
+            post_init.append(f"\t\tassert {chk_name_p}(self.{fd.name})")
+            
+        
             
             
     post_init_str= "\n".join(post_init)
     return post_init_str
-            
-            
-
-            
-def  generate_post_init_class(cname):
-    post_init=[]
-    if cname == "problem":
-        post_init.append(f"\tdef __post_init__(self):")
-        return f"""
-def __post_init__(self):
-    assert isinstance(self.holes,Iterable)
-    for x in self.holes:
-        if not isinstance(x,Sym):
-            assert isinstance(x,str)
-            xp= Sym(x)
-            assert isinstance(xp,Sym) 
-            
-    assert isinstance(self.knowns,Iterable)
-    for x in self.holes:
-        if not isinstance(x,Sym):
-            assert isinstance(x,str)
-            xp= Sym(x)
-            assert isinstance(xp,Sym) 
-    assert isinstance(self.preds,Iterable)
-    for x in self.preds:
-        if isinstance(x,Conj) or isinstance(x,Disj):
-            x.__post_init__()
-                
-        if isinstance(x,Cases):
-            assert(isinstance(x.case_var,Sym))
-            x.cases.__post_init__()
-        
-        if isinstance(x,Eq):
-            assert(isinstance(x.lhs,expr))
-            x.lhs.__post_init__()
-            assert(isinstance(x.rhs,expr))
-            x.rhs.__post_init__()
-            
-        if not isinstance(x,pred):
-            xp= pred(x)
-            assert isinstance(xp,pred) 
-    
-    """
-    if cname=="Conj" or cname=="Disj":
-        return f"""
-def __post_init__(self):
-    assert isinstance(self.preds,Iterable)
-    for x in self.preds:
-        if isinstance(x,Conj) or isinstance(x,Disj):
-            x.__post_init__()
-                
-        if isinstance(x,Cases):
-            assert(isinstance(x.case_var,Sym))
-            x.cases.__post_init__()
-        
-            
-        if isinstance(x,Eq):
-            assert(isinstance(x.lhs,expr))
-            x.lhs.__post_init__()
-            assert(isinstance(x.rhs,expr))
-            x.rhs.__post_init__()
-            
-        if not isinstance(x,pred):
-            
-            xp= pred(x)
-            assert isinstance(xp,pred) 
-    """
-    
-    if cname== "Cases":
-        return f"""
-def __post_init__(self):
-    if not isinstance(self.case_var,Sym):
-        assert(isinstance(self.case_var,str))
-        xp= Sym(case_var)
-        assert isinstance(xp,case_var)
-    assert isinstance(self.cases,Iterable)
-    for x in self.cases:
-        if isinstance(x,Conj) or isinstance(x,Disj):
-            x.__post_init__()
-                
-        if isinstance(x,Cases):
-            assert(isinstance(x.case_var,Sym))
-            x.cases.__post_init__()
-        
-            
-        if isinstance(x,Eq):
-            assert(isinstance(x.lhs,expr))
-            x.lhs.__post_init__()
-            assert(isinstance(x.rhs,expr))
-            x.rhs.__post_init__()
-            
-        if not isinstance(x,pred):
-    
-            xp= pred(x)
-            assert isinstance(xp,pred)
-             
-    """
-    
-    if cname=="Eq":
-        return f"""
-def __post_init__(self):
-    if isinstance(self.lhs,Const):
-        assert(isinstance(self.lhs.val,int))
-        
-    if isinstance(self.lhs,Var):
-        assert(isinstance(self.lhs.name,Sym))
-        
-    if isinstance(self.lhs,Add):
-        self.lhs.lhs.__post_init__()
-        self.lhs.rhs.__post_init__()
-        
-    if isinstance(self.lhs,Scale):
-        assert(isinstance(self.lhs.coeff,int))
-        self.lhs.e.__post_init__()
-        
-    if isinstance(self.rhs,Const):
-        assert(isinstance(self.rhs.val,int))
-        
-    if isinstance(self.rhs,Var):
-        assert(isinstance(self.rhs.name,Sym))
-        
-    if isinstance(self.rhs,Add):
-        self.rhs.lhs.__post_init__()
-        self.rhs.rhs.__post_init__()
-        
-    if isinstance(self.rhs,Scale):
-        assert(isinstance(self.rhs.coeff,int))
-        self.rhs.e.__post_init__()
-        
-    
-    if not isinstance(self.lhs,expr):
-        xp= expr(self.lhs)
-        assert isinstance(xp,case_var)
-        
-    if not isinstance(self.rhs,expr):
-        xp= expr(self.rhs)
-        assert isinstance(xp,case_var)
-            
-    """
-    
-    if cname== "Const":
-        # post_init.append(f"\tdef __post_init__(self):")
-        # post_init.append(f"\t\tassert(isinstance(self.val,int))")
-        # return "\n".join(post_init)
-        return f"""
-def __post_init__(self): 
-    assert(isinstance(self.val,int))
-        
-        """
-    if cname== "Var":
-        return f"""
-def __post_init__(self): 
-    assert(isinstance(self.name,Sym))
-        """
-        
-    if cname== "Add":
-        return f"""
-def __post_init__(self):
-    if isinstance(self.lhs,Const):
-        assert(isinstance(self.lhs.val,int))
-        
-    if isinstance(self.lhs,Var):
-        assert(isinstance(self.lhs.name,Sym))
-        
-    if isinstance(self.lhs,Add):
-        self.lhs.lhs.__post_init__()
-        self.lhs.rhs.__post_init__()
-        
-    if isinstance(self.lhs,Scale):
-        assert(isinstance(self.lhs.coeff,int))
-        self.lhs.e.__post_init__()
-        
-    if isinstance(self.rhs,Const):
-        assert(isinstance(self.rhs.val,int))
-        
-    if isinstance(self.rhs,Var):
-        assert(isinstance(self.rhs.name,Sym))
-        
-    if isinstance(self.rhs,Add):
-        self.rhs.lhs.__post_init__()
-        self.rhs.rhs.__post_init__()
-        
-    if isinstance(self.rhs,Scale):
-        assert(isinstance(self.rhs.coeff,int))
-        self.rhs.e.__post_init__()
-        
-    
-    if not isinstance(self.lhs,expr):
-        xp= expr(self.lhs)
-        assert isinstance(xp,case_var)
-        
-    if not isinstance(self.rhs,expr):
-        xp= expr(self.rhs)
-        assert isinstance(xp,case_var)
-            
-    """
-    
-    if cname=="Scale":
-         return f"""
-def __post_init__(self):
-    assert(isinstance(self.coeff,int))
-    assert(isinstance(self.e,(Const,Var,Add,Scale)))
-    
-    if isinstance(self.e,Const):
-        assert(isinstance(self.e.val,int))
-        
-    if isinstance(self.e,Var):
-        assert(isinstance(self.e.name,Sym))
-        
-    if isinstance(self.e,Add):
-        self.e.lhs.__post_init__()
-        self.e.rhs.__post_init__()
-        
-    if isinstance(self.e,Scale):
-        assert(isinstance(self.e.coeff,int))
-        self.e.e.__post_init__()
-        """
-    
-        
         
 def build_dc_test(
     env:ADTEnv,
@@ -899,7 +869,10 @@ def build_dc_test(
     cname: str,
     parent: str,
     fieldData: list[field_data],
+    memoize: bool,
+    checks_to_callname,
     slots: bool = True,
+    
     ):
     
     Err= type("Error",(Exception,),{})
@@ -913,14 +886,14 @@ def build_dc_test(
     assert isinstance(bf, Field)
     extra: List[Tuple[str, Type[Any], Field]] = [("___" + cname + "__", str, bf)]
     fields=[]
-    post_init= generate_post_init_from_field(fieldData)
-    #breakpoint()
+    post_init= generate_post_init_from_field(fieldData,checks_to_callname)
+    new_func= generate_new(memoize,cname)
+    
     for fd in fieldData:
         typ=fd.ty
         if not fd.hasDefault:
             if fd.seq:
                 if typ:
-                    # breakpoint()
                     fields.append((fd.name, f"Iterable[{typ}]"))
                 else:
                     fields.append((fd.name, None))
@@ -970,31 +943,32 @@ def build_dc_test(
   
     if parent!=cname:
         
-            dataclass_string=f"classdict_{cname}:WeakValueDictionary=WeakValueDictionary({my_dict}) \n@dataclass(frozen={True},slots={slots}) \nclass {cname}({parent}): \n{fields_string} \n{post_init} "
+            dataclass_string=f"classdict_{cname}:WeakValueDictionary=WeakValueDictionary({my_dict}) \nmemoize_{cname}:bool={memoize} \n@dataclass(frozen={True},slots={slots}) \nclass {cname}({parent}): \n{fields_string} \n{post_init} \n{new_func}"
             
-#         dataclass_string = f"""
-# @dataclass(frozen=True, slots={slots})
-# class {cname}({parent}):
-# {fields_string}
-#         {post_init}
-# """
-        #formatted_code=FormatCode(dataclass_string)
-        #final=formatted_code[0]
     else:
-        dataclass_string=f"classdict_{cname}:WeakValueDictionary=WeakValueDictionary({my_dict}) \n@dataclass(frozen={True},slots={slots}) \nclass {cname}: \n{fields_string} \n{post_init}"
-        #breakpoint()
-#         dataclass_string=f"""
-# @dataclass(frozen=True, slots={slots})
-# class {cname}:
-# {fields_string}
-#         {post_init}
-# """
+        dataclass_string=f"classdict_{cname}:WeakValueDictionary=WeakValueDictionary({my_dict}) \nmemoize_{cname}:bool={memoize} \n@dataclass(frozen={True},slots={slots}) \nclass {cname}: \n{fields_string} \n{post_init} \n{new_func}"
+        
     #breakpoint()
     formatted_code=FormatCode(dataclass_string)
     final=formatted_code[0]
     
         
     return final
+
+def generate_new(memoize,cname):
+    new_func=[]
+    new_func.append(f"\tdef __new__(cls,*args,**kwargs):")
+    new_func.append(f"\t\tobj=object.__new__(cls)")
+    new_func.append(f"\t\tcls.__init__(obj,*args,**kwargs)")
+    new_func.append(f"\t\tif memoize_{cname} and (obj in classdict_{cname}):")
+    new_func.append(f"\t\t\treturn classdict_{cname}[(obj)]")
+    new_func.append(f"\t\telif memoize_{cname}:")
+    new_func.append(f"\t\t\tclassdict_{cname}[obj]=obj")
+    new_func.append(f"\t\t\treturn obj")
+    new_func.append(f"\t\telse:")
+    new_func.append(f"\t\t\treturn obj")
+    
+    return "\n".join(new_func)
 
     
 def build_function_category_methods(fieldData, env, Err):
@@ -1402,6 +1376,7 @@ def _build_classes(
     slots: bool = False,
     visitor: bool = True,
 ):
+    #breakpoint()
     mod = ModuleType(asdl_mod.name)
     Err: type = type(asdl_mod.name + "Error", (Exception,), {})
     setattr(mod, "__err__", Err)
@@ -1516,38 +1491,44 @@ def ADT(
     
     classes= env.superTypes
     #need to create an abc class for each supertype
-    if memoize is True:
-        memoize = set(env.constructorData.keys())
-    elif memoize is False:
-        memoize = set()
-    elif isinstance(memoize, set):
-        pass
-    else:
-        raise ADTCreationError("Memoization should be a set or Bool")
-    
-    all_dataclasses_str= _build_classes_test(env,slots=slots)
+    #breakpoint()
+    # if memoize is True:
+    #     memoize = set(env.constructorData.keys())
+    # elif memoize is False:
+    #     memoize = set()
+    # elif isinstance(memoize, set):
+    #     pass
+    # else:
+    #     raise ADTCreationError("Memoization should be a set or Bool")
+    if isinstance(memoize,set):
+        memoize=True
+    all_dataclasses_str=''
+    checks=''
+    external=''
+    if memoize is True or memoize is False:
+        all_dataclasses_str= _build_classes_test(env,memoize,slots=slots)[2]
+        #checks=_build_classes_test(env,memoize,slots=slots)[2]
+        external= _build_classes_test(env,memoize,slots=slots)[1]
+        imports_source=_build_classes_test(env,memoize,slots=slots)[0]
     #make the name something you can parametrize
     stub= env.generateStubSimplified()
     
     badCheckSource=FormatCode(inspect.getsource(badCheck))
     badElemSource=FormatCode(inspect.getsource(badElem))
     
- 
-    
-    # err_code= build_err_str(mod,Err,env,cname)
-
-    
-    # with open("dataclass_test_str.py",'w') as f:
-    #    f.write(stub)
     tempFile = tempfile.NamedTemporaryFile("w", suffix=".py", delete=False)
     logging.info("Writing to {0}".format(tempFile.name))
     with tempFile as t:
-        t.write(stub)
+        t.write(imports_source)
         t.write('\n')
         t.write(badCheckSource[0])
         t.write('\n')
         t.write(badElemSource[0])
         t.write('\n')
+        t.write(external)
+        t.write('\n')
+       
+        
    
         t.write(all_dataclasses_str)
     

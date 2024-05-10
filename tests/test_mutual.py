@@ -5,7 +5,7 @@ from ADT import ADT
 
 def test_sum_mutual():
     try:
-        ADT(
+        x=ADT(
             """
         module Test {
         test1 = A (test2 t) | B (test1 tt) | C (int ttt)
@@ -13,6 +13,7 @@ def test_sum_mutual():
         }
         """
         )
+        print("ADT", x,type(x))
         return None
     except Exception as exc:
         assert False, str(exc)

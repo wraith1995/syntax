@@ -11,6 +11,8 @@ import pytest
 from ADT import ADT
 
 
+
+
 @dataclass(frozen=True)
 class Sym:
     """
@@ -20,13 +22,15 @@ class Sym:
     name: str
 
 
-@pytest.fixture(scope="session", name="ueq_grammar")
-def fixture_ueq_grammar():
+def test_fixture_ueq_grammar() -> None:
     """
     A grammar representing a unification equation from the SYSTL project.
     """
+    
+    def is_good_string(x: str) -> bool:
+        return len(x) < 6
 
-    return ADT(
+    adt= ADT(
         """
         module UEq {
             problem = ( sym*  holes,   -- symbols the solution is requested for
@@ -38,9 +42,42 @@ def fixture_ueq_grammar():
                  | Disj( pred* preds )
                  | Cases( sym case_var, pred* cases )
                  | Eq( expr lhs, expr rhs )
+                 | NewOne(expr rhs )
 
             expr = Const( int val )
                  | Var( sym name )
+                 | Add( expr lhs, expr rhs )
+                 | Scale( int coeff, expr e )
+        }
+        """,
+        {"sym": Sym},
+        slots=True,
+    )
+    
+    return adt
+
+
+@pytest.fixture(scope="session", name="ueq_grammar")
+def fixture_ueq_grammar():
+    """
+    A grammar representing a unification equation from the SYSTL project.
+    """
+
+    return ADT(
+        """
+        module UEq {
+            problem = ( str*  holes,   -- symbols the solution is requested for
+                        str*  knowns,  -- symbols allowed in solution expressions
+                        pred* preds    -- conj of equations
+                      )
+
+            pred = Conj( pred* preds )
+                 | Disj( pred* preds )
+                 | Cases( str case_var, pred* cases )
+                 | Eq( expr lhs, expr rhs )
+
+            expr = Const( int val )
+                 | Var( str name )
                  | Add( expr lhs, expr rhs )
                  | Scale( int coeff, expr e )
         }

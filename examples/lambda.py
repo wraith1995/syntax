@@ -1,6 +1,6 @@
-from adt import ADT, stamp
-
-
+# from adt import ADT, stamp 
+from ADT import ADT
+from ADT import stamp
 def is_valid_name(x):
     return type(x) is str
 
@@ -23,6 +23,18 @@ expr = App (expr lhs, expr rhs)
     ext_types={"name": str, "stamp": stamp},
     defaults={stamp: lambda: stamp()},
 )
+
+
+@dataclass
+class var:
+    vname: name
+    id: stamp
+    
+class App(...):
+    lhs: expr
+    rhs: expr
+    
+
 
 q = L.Var("a")
 print(q)
@@ -61,7 +73,7 @@ def alpha(e: L.expr) -> L.expr:
     copies = {x: x for x in fvs}
     # copy everything except these i.e recreate all vars but this.
     return e.__copy__(copies=copies)
-
+ 
 
 # write alpha convert version
 def subst(x: L.var, s: L.expr, e: L.expr) -> L.expr:
@@ -115,7 +127,7 @@ print("alpha equiv test")
 idterm = L.Lam(vara, L.Var(vara))
 idtermp = alpha(idterm)
 print(idterm)
-print(idtermp)
+print("TEST RESULT",idtermp)
 print("...")
-mapping = idterm.isomorphism(idtermp)
-print("result:", mapping, mapping is not None)
+# mapping = idterm.isomorphism(idtermp)
+# print("result:", mapping, mapping is not None)

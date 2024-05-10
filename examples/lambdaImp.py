@@ -16,13 +16,19 @@ L = ADT(
 module LAMBDACALC {
 
 
-expr = Application (expr lhs, expr rhs)
-     | Variable (str arg)
-     | Expression (str arg, expr body)
+var = (name vname, stamp id)
+
+expr = App (expr lhs, expr rhs)
+     | Var (var arg)
+     | Lam (var arg, expr body)
+     
+
 }
 
 """,
 )
+
+print("L TEST,",L)
 
 rename_to= {}
 
@@ -108,6 +114,16 @@ print(result.term2.body.term2.index)
 
 print(rename_to)
 
-#print(beta_reduction(result))
+print("BETA REDUCTION",beta_reduction(result))
 
 
+test= L.Application(L.Expression("x",L.Application(L.Variable("x"),L.Variable("x"))),L.Expression("z",L.Variable("u")))
+con_result= convert(test)
+print("CON", con_result.term1.body)
+
+con_result_beta= beta_reduction(convert(test))
+print(con_result_beta)
+
+
+
+#how to represent low-level
