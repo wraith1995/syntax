@@ -838,7 +838,7 @@ def build_element_check(mod, egraphIsInstance, Err, env, cname):
         if earlyAble:
             minArgs = env.constructorData[tyname].minArgs
             maxArgs = env.constructorData[tyname].maxArgs
-            if minArgs == 1:
+            if minArgs == 1 and len(env.constructorData[tyname].minSatisfy) > 0:
                 sf = env.constructorData[tyname].minSatisfy[0]
                 singleType = sf.ty  # list[sf.ty] if sf.seq else sf.ty
         else:
