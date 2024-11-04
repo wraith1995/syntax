@@ -398,21 +398,21 @@ class ADTEnv:
 def build_local_adt_errors(Err, x, cname, fieldName, targetType, opt):
     """Build errors used in ADT creation."""
     xt = type(x)
-    badType = Err(
+    badType = lambda _: Err(
         """{0}.{1} does not have type
     {2} because a value {3}
     has type {4} and opt={5}""".format(
             cname, fieldName, targetType, x, xt, opt
         )
     )
-    badCheck = Err(
+    badCheck = lambda _: Err(
         """{0}.{1} is not valid because
     {2} failed the
     check for type {3}""".format(
             cname, fieldName, x, targetType
         )
     )
-    badSeq = Err(
+    badSeq = lambda _: Err(
         """{0}.{1} does not have type {2},
     and instead has type {3};
     we tried to convert the value, {4}, because it was a
@@ -421,7 +421,7 @@ def build_local_adt_errors(Err, x, cname, fieldName, targetType, opt):
             cname, fieldName, targetType, xt, x
         )
     )
-    badElem = Err(
+    badElem = lambda _: Err(
         """{0}.{1} does not have type {2},
     and instead has type {3};
     we tried to convert the value, {4}, because it was the single
@@ -849,7 +849,7 @@ def build_element_check(mod, egraphIsInstance, Err, env, cname):
             return (False, None)
         if not egraphIsInstance(x, targetType):
             if not earlyAble:
-                raise badType
+                raise badType()
             else:
                 if isinstance(x, Sequence):
                     if minArgs <= len(x) <= maxArgs:
@@ -857,14 +857,14 @@ def build_element_check(mod, egraphIsInstance, Err, env, cname):
                             x = getattr(mod, tyname)(*x)
                             convert = True
                         except BaseException:
-                            raise badSeq
+                            raise badSeq()
                 elif isinstance(x, Mapping):
                     if minArgs <= len(x) <= maxArgs:
                         try:
                             x = getattr(mod, tyname)(**x)
                             convert = True
                         except BaseException:
-                            raise badSeq
+                            raise badSeq()
                 elif singleType is not None and egraphIsInstance(x, singleType):
                     # CHECK: How does opt interact with this case?
                     # CHECK: How does this interact with seq case?
@@ -872,11 +872,11 @@ def build_element_check(mod, egraphIsInstance, Err, env, cname):
                         x = getattr(mod, tyname)(x)
                         convert = True
                     except BaseException:
-                        raise badElem
+                        raise badElem()
                 elif x is None and opt:
                     pass
                 else:
-                    raise badType
+                    raise badType()
         else:
             pass
 
