@@ -27,7 +27,7 @@ from typing import (
 from weakref import WeakValueDictionary
 
 import asdl  # type: ignore
-from fastcore.all import typedispatch  # type: ignore
+# from fastcore.all import typedispatch  # type: ignore
 try:
     from snake_egg._internal import PyVar  # type: ignore
 except ImportError:
